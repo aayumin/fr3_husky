@@ -68,6 +68,7 @@ namespace std
 
 #include <fr3_husky_controller/servers/action_server_base.hpp>
 #include <fr3_husky_controller/servers/idle_control.hpp>
+#include <fr3_husky_controller/servers/fr3_husky/apple_vision_pro_action_server.hpp>
 
 
 namespace ConsoleColor 

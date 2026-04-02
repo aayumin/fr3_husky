@@ -11,7 +11,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "action/OmegaHaptic.action"
     "action/MoveToJoint.action"
     "action/ViveTracker.action"
-    "action/KeyboardMove.action"
     "action/AppleVisionPro.action"
 )
 

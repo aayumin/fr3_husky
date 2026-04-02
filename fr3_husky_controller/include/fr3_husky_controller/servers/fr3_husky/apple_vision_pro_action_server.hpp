@@ -10,7 +10,7 @@
 #include <fr3_husky_msgs/action/apple_vision_pro.hpp>
 
 #include <fr3_husky_controller/servers/action_server_base.hpp>
-#include <fr3_husky_controller/model/fr3_model_updater.hpp>
+#include <fr3_husky_controller/model/fr3_husky_model_updater.hpp>
 #include <fr3_husky_controller/utils/dyros_math.h>
 
 #include <rclcpp/rclcpp.hpp>
@@ -32,7 +32,7 @@
 #define IDX_PINCH_SNAP_DOWN_GESTURE   4 // index of pinch snap gesture in "l/r gesture" topic
 #define IDX_DOUBLE_TAP_GESTURE        5 // index of double tap gesture in "l/r gesture" topic
 
-namespace fr3_husky_controller::servers::fr3
+namespace fr3_husky_controller::servers::fr3_husky
 {
 
 class AppleVisionPro final : public ActionServerBase<fr3_husky_msgs::action::AppleVisionPro>
@@ -59,7 +59,7 @@ private:
     ResultPtr makeResult(StopReason reason) override;
 
 private:
-    FR3ModelUpdater& fr3_model_updater_;
+    FR3HuskyModelUpdater& fr3_husky_model_updater_;
 
 private:
     // publishers & subscribers
