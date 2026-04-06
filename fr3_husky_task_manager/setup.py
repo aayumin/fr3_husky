@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'apple_vision_pro = fr3_husky_task_manager.apple_vision_pro:main',
+            'move_to_joint = fr3_husky_task_manager.move_to_joint:main',
         ],
     },
 )
