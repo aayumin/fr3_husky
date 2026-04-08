@@ -36,28 +36,10 @@ MoveToJoint::MoveToJoint(const std::string& name, const NodePtr& node,
     rclcpp::NodeOptions mgi_opts;
     mgi_opts.automatically_declare_parameters_from_overrides(true);
     moveit_node_ = rclcpp::Node::make_shared(name_ + "_mgi", mgi_opts);
+    mode_ = ServerMode::TASK;
 
     jtc_client_ = rclcpp_action::create_client<FJT>(
         node_, "fr3_husky_joint_trajectory_controller");
-
-    auto qos = rclcpp::QoS(1).reliable().transient_local();
-    jtc_status_sub_ = node_->create_subscription<action_msgs::msg::GoalStatusArray>(
-        "fr3_husky_joint_trajectory_controller/_action/status",
-        qos,
-        [this](const action_msgs::msg::GoalStatusArray::SharedPtr msg)
-        {
-            bool busy = false;
-            for (const auto& gs : msg->status_list)
-            {
-                if (gs.status == action_msgs::msg::GoalStatus::STATUS_EXECUTING ||
-                    gs.status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED)
-                {
-                    busy = true;
-                    break;
-                }
-            }
-            jtc_busy_.store(busy, std::memory_order_relaxed);
-        });
 
     // --- Derive planning group and valid joint prefixes from robot_names ---
     const auto& rnames = model_updater.robot_names_;
@@ -279,6 +261,18 @@ void MoveToJoint::runPlanning()
         return;
     }
 
+    const auto& jt = plan.trajectory_.joint_trajectory;
+    if (jt.points.size() <= 1)
+    {
+        RCLCPP_INFO(node_->get_logger(),
+                    "[%s] trajectory has %zu waypoint(s); treating as already reached",
+                    name_.c_str(), jt.points.size());
+
+        plan_state_.store(PlanState::DONE, std::memory_order_release);
+        return;
+    }
+
+
     if (cancel_flag_.load(std::memory_order_relaxed))
     {
         std::lock_guard<std::mutex> lk(msg_mutex_);
@@ -307,18 +301,52 @@ void MoveToJoint::runPlanning()
             if (!gh)
             {
                 RCLCPP_ERROR(node_->get_logger(),
-                             "[%s] fr3_husky_joint_trajectory_controller rejected goal",
-                             name_.c_str());
+                            "[%s] fr3_husky_joint_trajectory_controller rejected goal",
+                            name_.c_str());
                 std::lock_guard<std::mutex> lk(msg_mutex_);
                 plan_error_msg_ = "JTC rejected the trajectory goal";
                 plan_state_.store(PlanState::FAILED, std::memory_order_release);
             }
             else
             {
+                {
+                    std::lock_guard<std::mutex> lk(jtc_goal_mutex_);
+                    jtc_goal_handle_ = gh;
+                }
+
                 RCLCPP_INFO(node_->get_logger(),
-                            "[%s] trajectory sent to fr3_husky_joint_trajectory_controller",
+                            "[%s] trajectory accepted by fr3_husky_joint_trajectory_controller",
+                            name_.c_str());
+                plan_state_.store(PlanState::EXECUTING, std::memory_order_release);
+            }
+        };
+
+    send_opts.result_callback =
+        [this](const GoalHandleFJT::WrappedResult& result)
+        {
+            RCLCPP_INFO(node_->get_logger(), " ========   [%s] JTC result callback entered. result.code=%d", name_.c_str(), static_cast<int>(result.code));
+
+
+            {
+                std::lock_guard<std::mutex> lk(jtc_goal_mutex_);
+                jtc_goal_handle_.reset();
+            }
+
+            if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
+            {
+                RCLCPP_INFO(node_->get_logger(),
+                            "[%s] JTC execution completed successfully",
                             name_.c_str());
                 plan_state_.store(PlanState::DONE, std::memory_order_release);
+            }
+            else
+            {
+                RCLCPP_ERROR(node_->get_logger(),
+                            "[%s] JTC execution failed or canceled",
+                            name_.c_str());
+                std::lock_guard<std::mutex> lk(msg_mutex_);
+                plan_error_msg_ = "JTC execution failed or canceled";
+                plan_state_.store(PlanState::FAILED, std::memory_order_release);
             }
         };
 
@@ -370,13 +398,6 @@ bool MoveToJoint::acceptGoal(const ActionT::Goal& goal)
         }
     }
 
-    if (jtc_busy_.load(std::memory_order_relaxed))
-    {
-        RCLCPP_WARN(node_->get_logger(),
-                    "[%s] Reject: fr3_husky_joint_trajectory_controller is already executing",
-                    name_.c_str());
-        return false;
-    }
     return true;
 }
 
@@ -423,6 +444,8 @@ void MoveToJoint::onGoalAccepted(const ActionT::Goal& goal)
     });
 
     RCLCPP_INFO(node_->get_logger(), "[%s] goal accepted — planning started", name_.c_str());
+
+    requestActivate();
 }
 
 void MoveToJoint::onStart()
@@ -439,7 +462,8 @@ void MoveToJoint::onStart()
 // ============================================================
 
 MoveToJoint::ComputeResult MoveToJoint::compute(
-    const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
+    const rclcpp::Time& /*time*/,
+    const rclcpp::Duration& /*period*/)
 {
     const auto state = plan_state_.load(std::memory_order_acquire);
 
@@ -448,15 +472,28 @@ MoveToJoint::ComputeResult MoveToJoint::compute(
         writeHoldCommands();
 
         auto fb = std::make_shared<ActionT::Feedback>();
-        fb->state          = 0;
+        fb->state          = 0;  // PLANNING
         fb->progress       = 0.0;
         fb->status_message = "Planning trajectory with MoveIt2 ...";
         publishFeedback(fb);
+
+        return ComputeResult::RUNNING;
+    }
+
+    if (state == PlanState::EXECUTING)
+    {
+        auto fb = std::make_shared<ActionT::Feedback>();
+        fb->state          = 1;
+        fb->progress       = 0.8;
+        fb->status_message = "Executing trajectory...";
+        publishFeedback(fb);
+
         return ComputeResult::RUNNING;
     }
 
     if (state == PlanState::FAILED)
     {
+
         std::string msg;
         {
             std::lock_guard<std::mutex> lk(msg_mutex_);
@@ -466,11 +503,10 @@ MoveToJoint::ComputeResult MoveToJoint::compute(
         return ComputeResult::ABORTED;
     }
 
-    // DONE — trajectory sent to JTC; hand off
     auto fb = std::make_shared<ActionT::Feedback>();
-    fb->state          = 1;
-    fb->progress       = 0.1;
-    fb->status_message = "Trajectory sent to fr3_husky_joint_trajectory_controller";
+    fb->state          = 2;  // DONE
+    fb->progress       = 1.0;
+    fb->status_message = "Trajectory execution completed";
     publishFeedback(fb);
 
     result_error_code_ = 0;
@@ -484,18 +520,39 @@ MoveToJoint::ComputeResult MoveToJoint::compute(
 void MoveToJoint::onStop(StopReason reason)
 {
     cancel_flag_.store(true, std::memory_order_relaxed);
+    plan_state_.store(PlanState::DONE);
+
+    if (reason == StopReason::CANCELED || reason == StopReason::ABORTED)
+    {
+        std::shared_ptr<GoalHandleFJT> gh;
+        {
+            std::lock_guard<std::mutex> lk(jtc_goal_mutex_);
+            gh = jtc_goal_handle_;
+        }
+
+        if (gh)
+        {
+            RCLCPP_INFO(node_->get_logger(),"[%s] canceling JTC goal...", name_.c_str());
+            jtc_client_->async_cancel_goal(gh);
+        }
+    }
+
 
     if (reason != StopReason::SUCCEEDED)
+    {
         model_updater_.haltCommands();
+    }
 
     const char* rs = (reason == StopReason::CANCELED)  ? "canceled"  :
-                     (reason == StopReason::SUCCEEDED)  ? "succeeded" :
-                     (reason == StopReason::ABORTED)    ? "aborted"   : "none";
+                     (reason == StopReason::SUCCEEDED) ? "succeeded" :
+                     (reason == StopReason::ABORTED)   ? "aborted"   : "none";
     RCLCPP_INFO(node_->get_logger(), "[%s] stopped (%s)", name_.c_str(), rs);
 }
 
 MoveToJoint::ResultPtr MoveToJoint::makeResult(StopReason reason)
-{
+{   
+
+
     auto result = std::make_shared<ActionT::Result>();
     if (reason == StopReason::SUCCEEDED)
     {
@@ -517,6 +574,8 @@ MoveToJoint::ResultPtr MoveToJoint::makeResult(StopReason reason)
         result->message    = plan_error_msg_.empty() ? "Aborted" : plan_error_msg_;
         result->error_code = result_error_code_;
     }
+
+
     return result;
 }
 

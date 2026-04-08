@@ -30,6 +30,7 @@ JointTrajectoryController::JointTrajectoryController(
 : Base(name, node, model_updater),
   fr3_model_updater_(getFR3ModelUpdater(model_updater, name))
 {
+    mode_ = ServerMode::CONTROLLER;
     RCLCPP_INFO(node_->get_logger(), "[%s] JointTrajectoryController created", name_.c_str());
 }
 
@@ -116,9 +117,15 @@ bool JointTrajectoryController::acceptGoal(const ActionT::Goal& goal)
 
 void JointTrajectoryController::onGoalAccepted(const ActionT::Goal& goal)
 {
-    trajectory_         = goal.trajectory;
-    path_tolerance_     = goal.path_tolerance;
-    goal_tolerance_     = goal.goal_tolerance;
+    fr3_model_updater_.setInitFromCurrent();
+    q_hold_            = fr3_model_updater_.q_total_;
+    start_time_set_    = false;
+    trajectory_done_   = false;
+    result_error_code_ = ActionT::Result::SUCCESSFUL;
+
+    trajectory_          = goal.trajectory;
+    path_tolerance_      = goal.path_tolerance;
+    goal_tolerance_      = goal.goal_tolerance;
     goal_time_tolerance_ = rclcpp::Duration(goal.goal_time_tolerance);
 
     goal_to_cmd_index_.resize(trajectory_.joint_names.size());
@@ -128,17 +135,16 @@ void JointTrajectoryController::onGoalAccepted(const ActionT::Goal& goal)
     }
 
     RCLCPP_INFO(node_->get_logger(),
-                "[%s] Goal accepted: %zu joints, %zu waypoints",
-                name_.c_str(), trajectory_.joint_names.size(), trajectory_.points.size());
+                "[%s] Goal accepted: %zu joints, %zu waypoints, q_hold=%ld",
+                name_.c_str(),
+                trajectory_.joint_names.size(),
+                trajectory_.points.size(),
+                static_cast<long>(q_hold_.size()));
+
 }
 
 void JointTrajectoryController::onStart()
 {
-    fr3_model_updater_.setInitFromCurrent();
-    q_hold_           = fr3_model_updater_.q_total_;  // latch ALL joint positions
-    start_time_set_   = false;
-    trajectory_done_  = false;
-    result_error_code_ = ActionT::Result::SUCCESSFUL;
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
 }
 
@@ -150,12 +156,61 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
     const rclcpp::Time& time,
     const rclcpp::Duration& /*period*/)
 {
+    if (trajectory_.points.empty())
+    {
+        if (model_updater_.HasEffortCommandInterface())
+        {
+            model_updater_.haltCommands();
+        }
+        else if (model_updater_.HasVelocityCommandInterface())
+        {
+            fr3_model_updater_.qdot_desired_total_.setZero();
+            fr3_model_updater_.writeCommand(fr3_model_updater_.qdot_desired_total_);
+        }
+        else if (model_updater_.HasPositionCommandInterface())
+        {
+            fr3_model_updater_.q_desired_total_ = fr3_model_updater_.q_total_;
+            fr3_model_updater_.writeCommand(fr3_model_updater_.q_desired_total_);
+        }
+
+        return ComputeResult::RUNNING;
+    }
+
+
+    if (q_hold_.size() != static_cast<Eigen::Index>(model_updater_.manipulator_dof_))
+    {
+        RCLCPP_ERROR(node_->get_logger(),
+                    "[%s] Invalid q_hold size: q_hold=%ld, manipulator_dof=%zu",
+                    name_.c_str(),
+                    static_cast<long>(q_hold_.size()),
+                    model_updater_.manipulator_dof_);
+        result_error_code_ = ActionT::Result::INVALID_JOINTS;
+        return ComputeResult::ABORTED;
+    }
+
+    if (fr3_model_updater_.q_total_.size() < static_cast<Eigen::Index>(model_updater_.manipulator_dof_) ||
+        fr3_model_updater_.qdot_total_.size() < static_cast<Eigen::Index>(model_updater_.manipulator_dof_))
+    {
+        RCLCPP_ERROR(node_->get_logger(),
+                    "[%s] State vector size mismatch: manipulator_dof=%zu, q_total=%ld, qdot_total=%ld",
+                    name_.c_str(),
+                    model_updater_.manipulator_dof_,
+                    static_cast<long>(fr3_model_updater_.q_total_.size()),
+                    static_cast<long>(fr3_model_updater_.qdot_total_.size()));
+        result_error_code_ = ActionT::Result::INVALID_JOINTS;
+        return ComputeResult::ABORTED;
+    }
+
+
+
     // Latch start time on the first control tick.
     if (!start_time_set_)
     {
         start_time_     = time;
         start_time_set_ = true;
     }
+
+
 
     const auto&  points       = trajectory_.points;
     const size_t n_pts        = points.size();
@@ -186,6 +241,7 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
                 qdot_desired(idx) = points.back().velocities[i];
             }
         }
+
     }
     else
     {
@@ -356,6 +412,10 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
         // All tolerances satisfied (or none specified) → success.
         if (!checkTolerance(goal_tolerance_, fb->error.positions))
         {
+            trajectory_ = trajectory_msgs::msg::JointTrajectory{};
+            goal_to_cmd_index_.clear();
+            start_time_set_ = false;
+            trajectory_done_ = false;
             return ComputeResult::SUCCEEDED;
         }
 
@@ -386,6 +446,11 @@ void JointTrajectoryController::onStop(StopReason reason)
 {
     model_updater_.haltCommands();
 
+    trajectory_ = trajectory_msgs::msg::JointTrajectory{};
+    goal_to_cmd_index_.clear();
+    start_time_set_ = false;
+    trajectory_done_ = false;
+
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)       reason_str = "canceled";
     else if (reason == StopReason::SUCCEEDED) reason_str = "succeeded";
@@ -393,7 +458,6 @@ void JointTrajectoryController::onStop(StopReason reason)
 
     RCLCPP_INFO(node_->get_logger(), "[%s] stopped (%s)", name_.c_str(), reason_str);
 }
-
 JointTrajectoryController::ResultPtr JointTrajectoryController::makeResult(StopReason reason)
 {
     auto result = std::make_shared<ActionT::Result>();
