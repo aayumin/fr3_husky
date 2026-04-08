@@ -128,6 +128,9 @@ void ViveTracker::onGoalAccepted(const ActionT::Goal& goal)
     controller_pos_multiplier_ = static_cast<double>(goal.controller_pos_multiplier);
     controller_ori_multiplier_ = static_cast<double>(goal.controller_ori_multiplier);
     saved_vive_goal_ = goal;
+
+
+    requestActivate();
 }
 
 void ViveTracker::onStart()

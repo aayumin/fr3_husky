@@ -89,6 +89,8 @@ void OmegaHaptic::onGoalAccepted(const ActionT::Goal& goal)
     haptic_ori_multiplier_ = static_cast<double>(goal.haptic_ori_multiplier);
     haptic_lin_vel_multiplier_ = static_cast<double>(goal.haptic_lin_vel_multiplier);
     haptic_ang_vel_multiplier_ = static_cast<double>(goal.haptic_ang_vel_multiplier);
+
+    requestActivate();
 }
 
 void OmegaHaptic::onStart()
