@@ -15,6 +15,9 @@ class AppleVisionProClient(Node):
         self._action_name = '/fr3_AVP_tracker'
         self._client = ActionClient(self, AppleVisionPro, self._action_name)
 
+        self._goal_handle = None
+        self._result_future = None
+
         self.get_logger().info(f'Waiting for action server: {self._action_name}')
         self._client.wait_for_server()
         self.get_logger().info(f'Connected to action server: {self._action_name}')
@@ -26,7 +29,7 @@ class AppleVisionProClient(Node):
         # goal.right_controller_ee_name = 'right_fr3_hand_tcp'
         goal.left_controller_ee_name = 'left_fr3_link8'
         goal.right_controller_ee_name = 'right_fr3_link8'
-        goal.move_orientation = False
+        goal.move_orientation = True
         goal.controller_pos_multiplier = 1.0
         goal.controller_ori_multiplier = 1.0
 
@@ -52,14 +55,33 @@ class AppleVisionProClient(Node):
         self.get_logger().info(
             f'Result - is_completed: {result.is_completed}'
         )
-        rclpy.shutdown()
+
+
+    def cancel_goal(self):
+        if self._goal_handle is None:
+            self.get_logger().warn('No active goal handle to cancel')
+            return None
+
+        self.get_logger().info('Canceling goal...')
+        return self._goal_handle.cancel_goal_async()
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = AppleVisionProClient()
     node.send_goal()
-    rclpy.spin(node)
+    # rclpy.spin(node)
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        cancel_future = node.cancel_goal()
+        if cancel_future is not None:
+            rclpy.spin_until_future_complete(node, cancel_future, timeout_sec=2.0)
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -44,7 +44,7 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
     tracker_base2robot_base_.assign(NUM_CONTROLLERS, Eigen::Matrix3d::Identity());
 
     ee_data_.clear();
-    
+
     // Action clients
     move_to_joint_client_ = rclcpp_action::create_client<MoveToJointAction>(node_, "fr3_move_to_joint");
     avp_self_client_       = rclcpp_action::create_client<ActionT>(node_, name_);
@@ -86,6 +86,8 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
 
 bool AppleVisionPro::acceptGoal(const ActionT::Goal& goal)
 {
+
+
     if (!model_updater_.HasEffortCommandInterface())
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject action: effort command interface is required",
@@ -128,7 +130,10 @@ void AppleVisionPro::onGoalAccepted(const ActionT::Goal& goal)
     controller_pos_multiplier_ = static_cast<double>(goal.controller_pos_multiplier);
     controller_ori_multiplier_ = static_cast<double>(goal.controller_ori_multiplier);
     saved_avp_goal_ = goal;
+
+    requestActivate();
 }
+
 
 void AppleVisionPro::onStart()
 {
@@ -173,6 +178,8 @@ void AppleVisionPro::onStart()
 
 AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 {
+
+
     for(auto& [ee_name, ee_data] : ee_data_)
     {
         ee_data.x = fr3_husky_model_updater_.robot_data_->getPose(ee_name);
@@ -284,7 +291,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time
     }
 
     // Manipulator control
-    {
+    {   
+
         // Check real-time hand tracking mode
         for(size_t i = 0; i < NUM_CONTROLLERS; ++i)
         {
@@ -297,6 +305,16 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time
                 controller_poses_init_[i] = controller_poses_local[i];
                 if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
                 else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
+
+
+                // remove
+                std::cout << "controller_poses_init_[0].translation().transpose(): " << controller_poses_init_[0].translation().transpose() << std::endl;
+                std::cout << "controller_poses_init_[0].linear(): " << controller_poses_init_[0].linear() << std::endl;
+                std::cout << "ee_data_[left_controller_ee_name_].x_init.linear(): " << ee_data_[left_controller_ee_name_].x_init.linear() << std::endl;
+                const Eigen::Matrix3d R_ee_init2con_init = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * tracker_base2robot_base_[IDX_LEFT_CON].transpose() * controller_poses_init_[IDX_LEFT_CON].linear();
+                std::cout << "R_ee_init2con_init (left): " << R_ee_init2con_init << std::endl;
+
+
             }
             else if(is_tracking_mode_on_[i] && gesture_states_local[i][IDX_PINCH_SNAP_DOWN_GESTURE]) // deactivate tracking mode
             {
@@ -318,7 +336,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time
                 if(i == IDX_LEFT_CON && !left_controller_ee_name_.empty())        ee_data_[left_controller_ee_name_].setInit();
                 else if(i == IDX_RIGHT_CON && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
             }
-            else if(prev_gesture_states_[i][IDX_PINCH_GESTURE] && !gesture_states_local[i][IDX_PINCH_GESTURE]) // deactivate tracking mode
+            else if(prev_gesture_states_[i][IDX_PINCH_GESTURE] && !gesture_states_local[i][IDX_PINCH_GESTURE]) // activate tracking mode
             {
                 RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
                 is_tracking_mode_on_[i] = true;
@@ -328,10 +346,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time
                 else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
             }
         }
-    
+        
         
         if(!left_controller_ee_name_.empty()) // left AVP controller
         {
+
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
             Eigen::Vector6d target_vel;
             target_pose_diff.setIdentity();
@@ -344,6 +363,9 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time
     
                 // Position
                 target_pose_diff.translation() = controller_pos_multiplier_ * R_ee_init2con_init * T_con_init2con_cur.translation();
+
+
+
     
                 // Orientation: using similarity transformation
                 target_pose_diff.linear().setIdentity();
@@ -404,7 +426,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time
 
         Eigen::VectorXd qdot_mobile = Eigen::VectorXd::Zero(mobi_dof);
         Eigen::VectorXd qddot_mobile = Eigen::VectorXd::Zero(mobi_dof);
-
 
         switch (control_mode_)
         {
@@ -482,7 +503,8 @@ AppleVisionPro::ResultPtr AppleVisionPro::makeResult(StopReason reason)
 }
 
 void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
-{
+{   
+
     if(msg->poses.size() != NUM_TRACKERS)
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Size of PoseArray for tracker_pose (%ld) does not equal to 3.", name_.c_str(), msg->poses.size());
