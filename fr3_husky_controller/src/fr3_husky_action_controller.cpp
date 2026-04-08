@@ -94,12 +94,16 @@ CallbackReturn FR3HuskyActionController::on_init()
 
 CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 1 start");
+
     // update parameters if they have changed
     if (param_listener_->is_old(params_))
     {
         params_ = param_listener_->get_params();
         LOGI(get_node(), "Parameters were updated");
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 2 after params");
 
     // number of FR3 robot used
     num_robots_ = params_.robot_name.size();
@@ -108,6 +112,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         LOGE(get_node(), "FR3 Husky controller expects one or two FR3 robots, but got %zu.", num_robots_);
         return CallbackReturn::FAILURE;
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 3 num_robots");
 
     // check names in allowed name list & uniqueness 
     const std::unordered_set<std::string> allowed = {"left", "right"};
@@ -127,6 +133,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         }
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 4 check allowed_name");
+
     // get manipulator degrees of freedom
     manipulator_dof_ = params_.manipulator_joints.size();
     if (manipulator_dof_ != FR3_DOF * num_robots_)
@@ -134,6 +142,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         LOGE(get_node(), "FR3 Husky controller expects %zu manipulator DoF, but got %zu.", FR3_DOF * num_robots_, manipulator_dof_);
         return CallbackReturn::FAILURE;
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 5 check dof");
 
     // number of mobile wheel checking
     if (params_.left_wheel_names.size() != params_.right_wheel_names.size())
@@ -156,6 +166,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         LOGE(get_node(), "estop_button_index must be non-negative, got %ld", static_cast<long>(params_.estop_button_index));
         return CallbackReturn::FAILURE;
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 6 check mobile wheel");
 
     // command flags (exactly one will be true)
     has_position_command_interface_ = (params_.manipulator_command_interface == allowed_interface_types_[0]);
@@ -186,6 +198,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         return CallbackReturn::FAILURE;
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 7 check command interface");
+
     // get sampling time dt_
     if (get_update_rate() == 0)
     {
@@ -215,6 +229,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         }
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 8 robot model");
+
     pinocchio::Model pin_model;
     pinocchio::urdf::buildModelFromXML(tmp_urdf_xml, pin_model);
     pinocchio::Data pin_data = pinocchio::Data(pin_model);
@@ -226,6 +242,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         if (frame.name.find("hand") != std::string::npos) has_hand = true;
         if (has_hand) break;
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 9 pinocchio model");
 
     // initialize dyros_robot_data & controller
     const std::string description_pkg = ament_index_cpp::get_package_share_directory("fr3_husky_description");
@@ -277,6 +295,9 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         return CallbackReturn::ERROR;
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 10 set joint index");
+
+
     drc::MobileManipulator::ActuatorIndex a;
     a.mani_start = j.mani_start - 3;
     a.mobi_start = j.mobi_start - 3;
@@ -293,6 +314,9 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         LOGE(get_node(), "Failed to initialize RobotData: %s", e.what());
         return CallbackReturn::ERROR;
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 11 initialize robot data");
+
 
     std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller = std::make_shared<drc::MobileManipulator::RobotController>(robot_data);
 
@@ -311,6 +335,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
     {
         model_updater_ = std::make_unique<FR3HuskyModelUpdater>();
     }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 12 robot model updater");
 
     model_updater_->setNode(get_node());
     model_updater_->setInterfaceFlags(has_position_state_interface_, has_velocity_state_interface_, has_effort_state_interface_,
@@ -335,14 +361,35 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         }
     }
 
-    action_servers_ = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
-    active_server_.reset();
-    
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 13 gripper action client");
+
+
+    {
+        auto all_servers = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
+
+        task_servers_.clear();
+        controller_servers_.clear();
+
+        for (auto& s : all_servers)
+        {
+            if (s->mode_ == fr3_husky_controller::servers::ActionServerManager::ServerMode::CONTROLLER)
+                controller_servers_.push_back(s);
+            else
+                task_servers_.push_back(s);
+        }
+    }
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 14 after action servers");
+
+    active_task_.reset();
+
     idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
 
     // Odometry publishers
     odometry_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>("~/odom", rclcpp::SystemDefaultsQoS());
     odometry_transform_publisher_ = get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", rclcpp::SystemDefaultsQoS());
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 15 odometry publisher");
 
     publish_rate_ = params_.publish_rate;
 
@@ -355,6 +402,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
     joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
         kJoyTopic, rclcpp::SystemDefaultsQoS(),
         std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 16 before create wall timer");
 
     odom_timer_ = get_node()->create_wall_timer(
         std::chrono::duration<double>(1.0 / publish_rate_),
@@ -547,9 +596,9 @@ CallbackReturn FR3HuskyActionController::on_deactivate(const rclcpp_lifecycle::S
     return CallbackReturn::SUCCESS;
 }
 
-controller_interface::return_type FR3HuskyActionController::update(const rclcpp::Time & time, const rclcpp::Duration & period)
-{
 
+controller_interface::return_type FR3HuskyActionController::update(const rclcpp::Time& time, const rclcpp::Duration& period)
+{
     if (!model_updater_)
     {
         LOGE(get_node(), "Model updater is not available during update loop.");
@@ -560,7 +609,7 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     {
         if (!is_halted_)
         {
-            if (model_updater_) model_updater_->haltCommands();
+            model_updater_->haltCommands();
             is_halted_ = true;
         }
         return controller_interface::return_type::OK;
@@ -576,69 +625,99 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     model_updater_->updateJointStates();
     model_updater_->updateRobotData();
 
-    mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
+    mobi_state_pub_buf_.writeFromNonRT(
+        std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
 
-    // 1. Deactivate current server if it is done or canceled.
-    if (active_server_)
+    // 1. active task 종료/취소 처리
+    if (active_task_)
     {
-        const bool cancel = active_server_->consumeCancelRequest();
-        const bool still_active = active_server_->isActive();
+        const bool cancel = active_task_->consumeCancelRequest();
+        const bool still_active = active_task_->isActive();
 
         if (cancel || !still_active)
         {
-            active_server_->onDeactivated();
-            active_server_.reset();
+            active_task_->onDeactivated();
+            active_task_.reset();
         }
     }
 
-    // 2. Scan for activate requests; higher-priority servers preempt lower-priority ones.
+    // 2. task activate 요청 스캔
     {
         std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> best;
         int best_p = std::numeric_limits<int>::min();
 
-        for (auto& s : action_servers_)
+        for (auto& s : task_servers_)
         {
             if (s->consumeActivateRequest())
             {
                 const int p = s->priority();
-                if (!best || p > best_p) { best = s; best_p = p; }
+                if (!best || p > best_p)
+                {
+                    best = s;
+                    best_p = p;
+                }
             }
         }
 
         if (best)
         {
-            if (!active_server_)
+            if (!active_task_)
             {
-                active_server_ = best;
-                active_server_->onActivated();
+                active_task_ = best;
+                active_task_->onActivated();
             }
-            else if (best_p > active_server_->priority())
+            else if (best.get() != active_task_.get())
             {
-                RCLCPP_INFO(get_node()->get_logger(),
-                            "[Controller] Preempting [%s] (priority=%d) with [%s] (priority=%d)",
-                            active_server_->getName().c_str(), active_server_->priority(),
-                            best->getName().c_str(), best_p);
-                active_server_->onDeactivated();
-                active_server_.reset();
-                active_server_ = best;
-                active_server_->onActivated();
+                if (active_task_->canBePreempted() && best_p > active_task_->priority())
+                {
+                    RCLCPP_INFO(
+                        get_node()->get_logger(),
+                        "[Controller] Preempting [%s] (priority=%d) with [%s] (priority=%d)",
+                        active_task_->getName().c_str(), active_task_->priority(),
+                        best->getName().c_str(), best_p);
+
+                    active_task_->onDeactivated();
+                    active_task_.reset();
+
+                    active_task_ = best;
+                    active_task_->onActivated();
+                }
+                else
+                {
+                    RCLCPP_INFO(
+                        get_node()->get_logger(),
+                        "[Controller] Rejecting new task [%s] while [%s] is active",
+                        best->getName().c_str(),
+                        active_task_->getName().c_str());
+
+                    best->onDeactivated();
+                }
             }
         }
     }
 
-    if (active_server_)
+    // 3. controller 서버는 항상 update
+    for (auto& s : controller_servers_)
+    {
+        s->update(time, period);
+    }
+
+    // 4. active task 실행 or idle
+    if (active_task_)
     {
         if (idle_control_) idle_control_->onDeactivated();
-        active_server_->update(time, period);
+        active_task_->update(time, period);
     }
     else
     {
         if (idle_control_) idle_control_->compute(time, period);
     }
 
-    const bool estop_pressed = params_.use_estop &&
-                               joy_msg_received_.load(std::memory_order_acquire) &&
-                               estop_button_pressed_.load(std::memory_order_acquire);
+
+    const bool estop_pressed =
+        params_.use_estop &&
+        joy_msg_received_.load(std::memory_order_acquire) &&
+        estop_button_pressed_.load(std::memory_order_acquire);
 
     if (estop_pressed && !estop_is_active_)
     {
@@ -657,6 +736,8 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
 
     return controller_interface::return_type::OK;
 }
+
+
 
 bool FR3HuskyActionController::setJointIndex(const std::string& urdf_xml, drc::MobileManipulator::JointIndex& out_idx)
 {

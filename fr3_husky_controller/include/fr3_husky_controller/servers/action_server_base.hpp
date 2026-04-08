@@ -61,7 +61,17 @@ public:
     virtual void onActivated() {};
     virtual void onDeactivated() {};
 
+    virtual bool canBePreempted() const { return false; }
+
     const std::string& getName() const { return name_; }
+
+    enum class ServerMode
+        {
+            TASK,      // 한번에 하나씩만 실행됨. high-level task managing
+            CONTROLLER   // background로 계속 loop 돌고 있는 controller.
+        };
+
+    ServerMode mode_ = ServerMode::TASK;
 
 protected:
     void requestActivate();
@@ -147,12 +157,18 @@ public:
 
     ~ActionServerBase() override = default;
 
+    bool canBePreempted() const override
+    {
+        return allowPreemption();
+    }
+
     bool update(const rclcpp::Time& time, const rclcpp::Duration& period) override
     {
         // Handle same-server preemption: a new goal arrived while this server was active.
-        if (preempt_pending_.load(std::memory_order_acquire))
+        if (mode_ == ServerMode::TASK &&
+            preempt_pending_.load(std::memory_order_acquire))
         {
-            finalizeGoal(StopReason::ABORTED);  // abort current goal; CANCELED requires CANCELING state (client-initiated only)
+            finalizeGoal(StopReason::ABORTED);
 
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -163,21 +179,30 @@ public:
                 preempt_pending_.store(false, std::memory_order_release);
             }
 
-            onActivated();  // calls updateJointStates + updateRobotData + onStart
+            onActivated();
             return true;
         }
 
         std::shared_ptr<GoalHandle> goal_handle;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (!active_ || !active_goal_)
-            {
-                return true;
-            }
-            goal_handle = active_goal_;
-        }
 
-        if (goal_handle->is_canceling())
+            if (mode_ == ServerMode::TASK)
+            {
+                if (!active_ || !active_goal_)
+                {
+                    return true;
+                }
+                goal_handle = active_goal_;
+            }
+            else  // CONTROLLER
+            {
+                goal_handle = active_goal_;  // 없어도 OK
+            }
+        }
+        
+        // if (goal_handle->is_canceling())
+        if (goal_handle && goal_handle->is_canceling())
         {
             finalizeGoal(StopReason::CANCELED);
             return true;
@@ -200,14 +225,14 @@ public:
         }
 
         if (state == ComputeResult::RUNNING)
-        {
             return true;
-        }
+
         if (state == ComputeResult::SUCCEEDED)
         {
             finalizeGoal(StopReason::SUCCEEDED);
             return true;
         }
+
         finalizeGoal(StopReason::ABORTED);
         return true;
     }
@@ -222,9 +247,12 @@ public:
     {
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (!active_ || !active_goal_)
+            if (mode_ == ServerMode::TASK)
             {
-                return;
+                if (!active_ || !active_goal_)
+                {
+                    return;
+                }
             }
         }
 
@@ -307,7 +335,7 @@ private:
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (active_ || active_goal_ || preempt_pending_.load(std::memory_order_relaxed))
+            if (mode_ == ServerMode::TASK && (active_ || active_goal_ || preempt_pending_.load(std::memory_order_relaxed)))
             {
                 if (!allowPreemption())
                 {
@@ -316,7 +344,6 @@ private:
                 }
                 if (preempt_pending_.load(std::memory_order_relaxed))
                 {
-                    // Don't stack preemptions
                     RCLCPP_WARN(node_->get_logger(), "[%s] Reject goal: preemption already pending", name_.c_str());
                     return GoalResponse::REJECT;
                 }
@@ -375,20 +402,32 @@ private:
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (active_ || active_goal_)
+
+            if (mode_ == ServerMode::TASK)
             {
-                // Preemption: store new goal; update() will cancel current and activate this one.
-                preempt_goal_handle_ = goal_handle;
-                preempt_goal_msg_    = std::move(goal_copy);
-                preempt_pending_.store(true, std::memory_order_release);
-                return;
+                if (active_ || active_goal_)
+                {
+                    preempt_goal_handle_ = goal_handle;
+                    preempt_goal_msg_    = std::move(goal_copy);
+                    preempt_pending_.store(true, std::memory_order_release);
+                    return;
+                }
+
+                active_goal_     = goal_handle;
+                active_goal_msg_ = std::move(goal_copy);
+                active_          = true;
             }
-            active_goal_     = goal_handle;
-            active_goal_msg_ = std::move(goal_copy);
-            active_          = true;
+            else  // CONTROLLER
+            {
+                active_goal_     = goal_handle;
+                active_goal_msg_ = std::move(goal_copy);
+            }
         }
 
-        requestActivate();
+        if (mode_ == ServerMode::TASK)
+        {
+            requestActivate();
+        }
     }
 
     void finalizeGoal(StopReason reason)
