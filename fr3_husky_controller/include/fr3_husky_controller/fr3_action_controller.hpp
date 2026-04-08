@@ -144,10 +144,13 @@ class FR3ActionController : public controller_interface::ControllerInterface
         // ========================================================================
         std::unique_ptr<FR3ModelUpdater> model_updater_;
         bool loadDRCGains(std::shared_ptr<drc::Manipulator::RobotController> robot_controller);
-        std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> action_servers_;
-        std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> active_server_;
-        std::unique_ptr<fr3_husky_controller::servers::IdleControl> idle_control_;
 
+        std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> task_servers_;
+        std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> controller_servers_;
+
+        std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> active_task_;
+        std::unique_ptr<fr3_husky_controller::servers::IdleControl> idle_control_;
+        
 };
 
 }  // namespace fr3_husky_controller
