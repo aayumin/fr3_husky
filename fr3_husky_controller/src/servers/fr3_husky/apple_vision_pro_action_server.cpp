@@ -79,7 +79,7 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
         });
 
     // Initialize franka hand state
-    for(const auto& robot_name : model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
+    for(const auto& robot_name : fr3_husky_model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
 
     RCLCPP_INFO(node_->get_logger(), "[%s] AppleVisionPro created", name_.c_str());
 }
@@ -88,7 +88,7 @@ bool AppleVisionPro::acceptGoal(const ActionT::Goal& goal)
 {
 
 
-    if (!model_updater_.HasEffortCommandInterface())
+    if (!fr3_husky_model_updater_.HasEffortCommandInterface())
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject action: effort command interface is required",
                                          name_.c_str());
@@ -218,11 +218,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 is_initialize_mode_on_ = true;
 
                 MoveToJointAction::Goal mtj_goal;
-                for (const auto& robot_name : model_updater_.robot_names_)
+                for (const auto& robot_name : fr3_husky_model_updater_.robot_names_)
                 {
                     for (size_t j = 0; j < FR3_DOF; ++j)
                     {
-                        mtj_goal.joint_names.push_back(robot_name + "_" + model_updater_.arm_id_ + "_joint" + std::to_string(j+1));
+                        mtj_goal.joint_names.push_back(robot_name + "_" + fr3_husky_model_updater_.arm_id_ + "_joint" + std::to_string(j+1));
                         mtj_goal.target_positions.push_back(HomePose(j));
                     }
                 }
@@ -314,15 +314,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 controller_poses_init_[i] = controller_poses_local[i];
                 if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
                 else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
-
-
-                // remove
-                std::cout << "controller_poses_init_[0].translation().transpose(): " << controller_poses_init_[0].translation().transpose() << std::endl;
-                std::cout << "controller_poses_init_[0].linear(): " << controller_poses_init_[0].linear() << std::endl;
-                std::cout << "ee_data_[left_controller_ee_name_].x_init.linear(): " << ee_data_[left_controller_ee_name_].x_init.linear() << std::endl;
-                const Eigen::Matrix3d R_ee_init2con_init = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * tracker_base2robot_base_[IDX_LEFT_CON].transpose() * controller_poses_init_[IDX_LEFT_CON].linear();
-                std::cout << "R_ee_init2con_init (left): " << R_ee_init2con_init << std::endl;
-
 
             }
             else if(is_tracking_mode_on_[i] && gesture_states_local[i][IDX_PINCH_SNAP_DOWN_GESTURE]) // deactivate tracking mode
@@ -429,24 +420,19 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
         bool is_qp_solved = true;
         std::string time_verbose = "";
 
-
-        const int mani_dof = fr3_husky_model_updater_.robot_controller_->getManipulatorDof();
-        const int mobi_dof = fr3_husky_model_updater_.robot_controller_->getMobileDof();
-
-        Eigen::VectorXd qdot_mobile = Eigen::VectorXd::Zero(mobi_dof);
-        Eigen::VectorXd qddot_mobile = Eigen::VectorXd::Zero(mobi_dof);
+        Eigen::VectorXd qdot_mobile = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
 
         switch (control_mode_)
         {
             case 0: // CLIK
-                {
+                {   
                     // --- Arm null_qdot: cubic toward HomePose ---
-                    Eigen::VectorXd HomePose_total(model_updater_.manipulator_dof_);
-                    for(size_t i = 0; i < model_updater_.num_robots_; ++i)
+                    Eigen::VectorXd HomePose_total(fr3_husky_model_updater_.manipulator_dof_);
+                    for(size_t i = 0; i < fr3_husky_model_updater_.num_robots_; ++i)
                         HomePose_total.segment(FR3_DOF*i, FR3_DOF) = HomePose;
 
                     static constexpr double null_space_duration = 5.0;
-                    const Eigen::VectorXd zeros_mani = Eigen::VectorXd::Zero(model_updater_.manipulator_dof_);
+                    const Eigen::VectorXd zeros_mani = Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
                     const Eigen::VectorXd null_qdot_mani =
                         fr3_husky_model_updater_.robot_controller_->moveManipulatorJointVelocityCubic(HomePose_total, zeros_mani, q_init_for_home_,  zeros_mani, time.seconds(), control_start_time_, null_space_duration);
 
@@ -474,7 +460,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     Eigen::VectorXd null_qdot(fr3_husky_model_updater_.robot_data_->getActuatorDof());
                     const auto& act_idx = fr3_husky_model_updater_.robot_data_->getActuatorIndex();
                     null_qdot.segment(act_idx.mobi_start, fr3_husky_model_updater_.mobile_dof_) = null_qdot_mobile;
-                    null_qdot.segment(act_idx.mani_start, model_updater_.manipulator_dof_)      = null_qdot_mani;
+                    null_qdot.segment(act_idx.mani_start, fr3_husky_model_updater_.manipulator_dof_)      = null_qdot_mani;
 
                     fr3_husky_model_updater_.robot_controller_->CLIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, null_qdot);
                     fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ +
@@ -485,27 +471,69 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     break;
                 }
             case 1: // OSF
-                fr3_husky_model_updater_.robot_controller_->OSFStep(ee_data_, qddot_mobile, fr3_husky_model_updater_.torque_desired_total_);
-                break;
+                {
+                    // Build HomePose target for null space (per robot)
+                    Eigen::VectorXd HomePose_total(fr3_husky_model_updater_.manipulator_dof_);
+                    for(size_t i = 0; i < fr3_husky_model_updater_.num_robots_; ++i) HomePose_total.segment(FR3_DOF*i, FR3_DOF) = HomePose;
+                    Eigen::VectorXd null_torque(fr3_husky_model_updater_.robot_data_->getActuatorDof());
+                    null_torque.segment(fr3_husky_model_updater_.robot_data_->getActuatorIndex().mani_start, fr3_husky_model_updater_.manipulator_dof_) = 
+                        fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueCubic(HomePose_total,
+                                                                                            Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_),
+                                                                                            q_init_for_home_,
+                                                                                            Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_),
+                                                                                            time.seconds(),
+                                                                                            control_start_time_,
+                                                                                            3.0);
+                    // Null-space viscous damping: -kd * wheel_vel_ dissipates kinetic energy of the base
+                    static constexpr double mobile_null_damping = 10.0; // [N·m·s/rad]: tune as needed
+                    null_torque.segment(fr3_husky_model_updater_.robot_data_->getActuatorIndex().mobi_start, fr3_husky_model_updater_.mobile_dof_) =
+                        -mobile_null_damping * fr3_husky_model_updater_.wheel_vel_;
+
+
+                    Eigen::VectorXd wheel_acc_desired = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
+                    fr3_husky_model_updater_.robot_controller_->OSFStep(ee_data_,
+                                                                        wheel_acc_desired,
+                                                                        fr3_husky_model_updater_.torque_desired_total_,
+                                                                        null_torque);
+                    fr3_husky_model_updater_.wheel_vel_desired_ = fr3_husky_model_updater_.wheel_vel_ + wheel_acc_desired * fr3_husky_model_updater_.dt_;
+                    break;
+                }
 
             case 2: // QPIK
-                is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, time_verbose);
-                if (!is_qp_solved) fr3_husky_model_updater_.qdot_desired_total_.setZero();
-                fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
-                fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
-                break;
+                {
+                    is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, time_verbose);
+                    if(!is_qp_solved)
+                    {
+                        fr3_husky_model_updater_.qdot_desired_total_.setZero();
+                        fr3_husky_model_updater_.wheel_vel_desired_.setZero();
+                    }
+                    fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
+                    fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
+                    break;
+                }
+
 
                 
                 
             case 3: // QPID
-                is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIDStep(ee_data_, qddot_mobile, fr3_husky_model_updater_.torque_desired_total_, time_verbose);
-                if (!is_qp_solved) fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_data_->getGravity();
-                break;
+                {
+                    Eigen::VectorXd wheel_acc_desired = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
+                    is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIDStep(ee_data_, wheel_acc_desired, fr3_husky_model_updater_.torque_desired_total_, time_verbose);
+                    if(!is_qp_solved)
+                    {
+                        fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.g_total_;
+                        wheel_acc_desired.setZero();
+                    }
+                    fr3_husky_model_updater_.wheel_vel_desired_ = fr3_husky_model_updater_.wheel_vel_ + wheel_acc_desired * fr3_husky_model_updater_.dt_;
+                    break;
+                }
+
 
                 
             default:
                 fr3_husky_model_updater_.qdot_desired_total_.setZero();
                 fr3_husky_model_updater_.torque_desired_total_.setZero();
+                fr3_husky_model_updater_.wheel_vel_desired_.setZero();
                 break;
         }
 
@@ -522,7 +550,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 void AppleVisionPro::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_husky_model_updater_.haltCommands();
 
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)
