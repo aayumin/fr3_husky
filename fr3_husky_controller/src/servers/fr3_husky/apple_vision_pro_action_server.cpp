@@ -1,20 +1,20 @@
-#include <fr3_husky_controller/servers/fr3/vive_tracker_action_server.hpp>
+#include <fr3_husky_controller/servers/fr3_husky/apple_vision_pro_action_server.hpp>
 
 #include <stdexcept>
 
-namespace fr3_husky_controller::servers::fr3
+namespace fr3_husky_controller::servers::fr3_husky
 {
 
 namespace
 {
-FR3ModelUpdater& getFR3ModelUpdater(ModelUpdaterBase& model_updater, const std::string& server_name)
+FR3HuskyModelUpdater& getFR3HuskyModelUpdater(ModelUpdaterBase& model_updater, const std::string& server_name)
 {
-    auto* fr3_model_updater = dynamic_cast<FR3ModelUpdater*>(&model_updater);
-    if (!fr3_model_updater)
+    auto* fr3_husky_model_updater = dynamic_cast<FR3HuskyModelUpdater*>(&model_updater);
+    if (!fr3_husky_model_updater)
     {
-        throw std::runtime_error("[" + server_name + "] requires FR3ModelUpdater");
+        throw std::runtime_error("[" + server_name + "] requires FR3HuskyModelUpdater");
     }
-    return *fr3_model_updater;
+    return *fr3_husky_model_updater;
 }
 
 // Extract robot name ("left" or "right") from an ee_name such as "left_fr3_hand_tcp".
@@ -28,35 +28,26 @@ std::string getRobotNameFromEEName(const std::string& ee_name)
 
 }  // namespace
 
-ViveTracker::ViveTracker(const std::string& name, const NodePtr& node, ModelUpdaterBase& model_updater)
+AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, ModelUpdaterBase& model_updater)
 : Base(name, node, model_updater),
-  fr3_model_updater_(getFR3ModelUpdater(model_updater, name))
+  fr3_husky_model_updater_(getFR3HuskyModelUpdater(model_updater, name))
 {
-    pose_sub_         = node_->create_subscription<geometry_msgs::msg::PoseArray>("tracker_pose", 1, std::bind(&ViveTracker::subPoseCallback, this, std::placeholders::_1));
-    l_joy_sub_ = node_->create_subscription<sensor_msgs::msg::Joy>("lhand_joy", 1, std::bind(&ViveTracker::subLJoyCallback, this, std::placeholders::_1));
-    r_joy_sub_ = node_->create_subscription<sensor_msgs::msg::Joy>("rhand_joy", 1, std::bind(&ViveTracker::subRJoyCallback, this, std::placeholders::_1));
+    pose_sub_         = node_->create_subscription<geometry_msgs::msg::PoseArray>("tracker_pose", 1, std::bind(&AppleVisionPro::subPoseCallback, this, std::placeholders::_1));
+    l_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("lhand_gesture", 1, std::bind(&AppleVisionPro::subLGestureCallback, this, std::placeholders::_1));
+    r_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("rhand_gesture", 1, std::bind(&AppleVisionPro::subRGestureCallback, this, std::placeholders::_1));
 
     controller_poses_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
     controller_poses_init_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
-    button_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_BUTTONS, false));
-    prev_button_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_BUTTONS, false));
+    gesture_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_GESTURES, false));
+    prev_gesture_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_GESTURES, false));
 
     tracker_base2robot_base_.assign(NUM_CONTROLLERS, Eigen::Matrix3d::Identity());
 
     ee_data_.clear();
 
-    for(const auto& frame : fr3_model_updater_.robot_data_->getLinkFrameVector())
-    {
-        if (frame.find("wheel") != std::string::npos) 
-        {
-            has_mobile_ = true;
-            break;
-        }
-    }
-
     // Action clients
     move_to_joint_client_ = rclcpp_action::create_client<MoveToJointAction>(node_, "fr3_move_to_joint");
-    vt_self_client_       = rclcpp_action::create_client<ActionT>(node_, name_);
+    avp_self_client_       = rclcpp_action::create_client<ActionT>(node_, name_);
 
     // Subscribe to JTC action status to detect when trajectory execution completes
     auto jtc_qos = rclcpp::QoS(1).reliable().transient_local();
@@ -82,19 +73,21 @@ ViveTracker::ViveTracker(const std::string& name, const NodePtr& node, ModelUpda
             {
                 waiting_for_jtc_.store(false, std::memory_order_relaxed);
                 RCLCPP_INFO(node_->get_logger(),
-                            "[%s] JTC finished — re-activating ViveTracker", name_.c_str());
-                vt_self_client_->async_send_goal(saved_vive_goal_);
+                            "[%s] JTC finished — re-activating AppleVisionPro", name_.c_str());
+                avp_self_client_->async_send_goal(saved_avp_goal_);
             }
         });
 
     // Initialize franka hand state
-    for(const auto& robot_name : model_updater_.robot_names_) fr3_model_updater_.GripperHoming(robot_name); 
+    for(const auto& robot_name : model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
 
-    RCLCPP_INFO(node_->get_logger(), "[%s] ViveTracker created", name_.c_str());
+    RCLCPP_INFO(node_->get_logger(), "[%s] AppleVisionPro created", name_.c_str());
 }
 
-bool ViveTracker::acceptGoal(const ActionT::Goal& goal)
+bool AppleVisionPro::acceptGoal(const ActionT::Goal& goal)
 {
+
+
     if (!model_updater_.HasEffortCommandInterface())
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject action: effort command interface is required",
@@ -111,14 +104,14 @@ bool ViveTracker::acceptGoal(const ActionT::Goal& goal)
         return false;
     }
 
-    if(!goal.left_controller_ee_name.empty() && !fr3_model_updater_.robot_data_->hasLinkFrame(goal.left_controller_ee_name))
+    if(!goal.left_controller_ee_name.empty() && !fr3_husky_model_updater_.robot_data_->hasLinkFrame(goal.left_controller_ee_name))
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject action: left_controller_ee_name from the goal [%s] is not includede in URDF.",
                                          name_.c_str(), goal.left_controller_ee_name.c_str());
         return false;
     }
 
-    if(!goal.right_controller_ee_name.empty() && !fr3_model_updater_.robot_data_->hasLinkFrame(goal.right_controller_ee_name))
+    if(!goal.right_controller_ee_name.empty() && !fr3_husky_model_updater_.robot_data_->hasLinkFrame(goal.right_controller_ee_name))
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject action: right_controller_ee_name from the goal [%s] is not includede in URDF.",
                                          name_.c_str(), goal.right_controller_ee_name.c_str());
@@ -128,7 +121,7 @@ bool ViveTracker::acceptGoal(const ActionT::Goal& goal)
     return true;
 }
 
-void ViveTracker::onGoalAccepted(const ActionT::Goal& goal)
+void AppleVisionPro::onGoalAccepted(const ActionT::Goal& goal)
 {
     control_mode_ = goal.mode;
     left_controller_ee_name_ = goal.left_controller_ee_name;
@@ -136,26 +129,26 @@ void ViveTracker::onGoalAccepted(const ActionT::Goal& goal)
     move_ori_ = goal.move_orientation;
     controller_pos_multiplier_ = static_cast<double>(goal.controller_pos_multiplier);
     controller_ori_multiplier_ = static_cast<double>(goal.controller_ori_multiplier);
-    saved_vive_goal_ = goal;
-
+    saved_avp_goal_ = goal;
 
     requestActivate();
 }
 
-void ViveTracker::onStart()
+
+void AppleVisionPro::onStart()
 {
     {
         std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
         for(auto& tracker_pose : controller_poses_) tracker_pose.setIdentity();
     }
-    for(auto& controller_pose_init : controller_poses_init_) controller_pose_init.setIdentity();
+    for(auto& tracker_pose_init : controller_poses_init_) tracker_pose_init.setIdentity();
     {
-        std::lock_guard<std::mutex> lock(button_state_mutex_);
-        for(auto& button_state : button_states_) button_state = std::vector<bool>(NUM_BUTTONS, false);
+        std::lock_guard<std::mutex> lock(gesture_state_mutex_);
+        for(auto& gesture_state : gesture_states_) gesture_state = std::vector<bool>(NUM_GESTURES, false);
     }
 
-    for(auto& prev_button_state : prev_button_states_) prev_button_state = std::vector<bool>(NUM_BUTTONS, false);
-    is_mouse_mode_on_.assign(NUM_CONTROLLERS, false);
+    for(auto& prev_gesture_state : prev_gesture_states_) prev_gesture_state = std::vector<bool>(NUM_GESTURES, false);
+    is_tracking_mode_on_.assign(NUM_CONTROLLERS, false);
     is_initialize_mode_on_ = false;
     is_gripper_mode_on_.assign(NUM_CONTROLLERS, false);
     ee_data_.clear();
@@ -164,8 +157,8 @@ void ViveTracker::onStart()
     if(!left_controller_ee_name_.empty())
     {
         ee_data_[left_controller_ee_name_] = drc::TaskSpaceData::Zero();
-        ee_data_[left_controller_ee_name_].x = fr3_model_updater_.robot_data_->getPose(left_controller_ee_name_);
-        ee_data_[left_controller_ee_name_].xdot = fr3_model_updater_.robot_data_->getVelocity(left_controller_ee_name_);
+        ee_data_[left_controller_ee_name_].x = fr3_husky_model_updater_.robot_data_->getPose(left_controller_ee_name_);
+        ee_data_[left_controller_ee_name_].xdot = fr3_husky_model_updater_.robot_data_->getVelocity(left_controller_ee_name_);
         ee_data_[left_controller_ee_name_].xddot.setZero();
         ee_data_[left_controller_ee_name_].setInit();
         ee_data_[left_controller_ee_name_].setDesired();
@@ -173,8 +166,8 @@ void ViveTracker::onStart()
     if(!right_controller_ee_name_.empty())
     {
         ee_data_[right_controller_ee_name_] = drc::TaskSpaceData::Zero();
-        ee_data_[right_controller_ee_name_].x = fr3_model_updater_.robot_data_->getPose(right_controller_ee_name_);
-        ee_data_[right_controller_ee_name_].xdot = fr3_model_updater_.robot_data_->getVelocity(right_controller_ee_name_);
+        ee_data_[right_controller_ee_name_].x = fr3_husky_model_updater_.robot_data_->getPose(right_controller_ee_name_);
+        ee_data_[right_controller_ee_name_].xdot = fr3_husky_model_updater_.robot_data_->getVelocity(right_controller_ee_name_);
         ee_data_[right_controller_ee_name_].xddot.setZero();
         ee_data_[right_controller_ee_name_].setInit();
         ee_data_[right_controller_ee_name_].setDesired();
@@ -183,33 +176,35 @@ void ViveTracker::onStart()
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
 }
 
-ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
+AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 {
+
+
     for(auto& [ee_name, ee_data] : ee_data_)
     {
-        ee_data.x = fr3_model_updater_.robot_data_->getPose(ee_name);
-        ee_data.xdot = fr3_model_updater_.robot_data_->getVelocity(ee_name);
+        ee_data.x = fr3_husky_model_updater_.robot_data_->getPose(ee_name);
+        ee_data.xdot = fr3_husky_model_updater_.robot_data_->getVelocity(ee_name);
         ee_data.xddot.setZero();
     }
 
     std::vector<Eigen::Affine3d> controller_poses_local;   // left, right, head
-    std::vector<std::vector<bool>> button_states_local;    // [left, right][trigger, grip, a, b]
+    std::vector<std::vector<bool>> gesture_states_local;    // [left, right]
     {
         std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
         controller_poses_local = controller_poses_;
     }
     {
-        std::lock_guard<std::mutex> lock(button_state_mutex_);
-        button_states_local = button_states_;
+        std::lock_guard<std::mutex> lock(gesture_state_mutex_);
+        gesture_states_local = gesture_states_;
     }
 
     // Initialize mode
     {
         if (!is_initialize_mode_on_)
         {
-            // if "a" button on the vive controller is pressed
-            if ((!prev_button_states_[IDX_LEFT_CON][IDX_A_BUTTON]  && button_states_local[IDX_LEFT_CON][IDX_A_BUTTON]) ||
-                (!prev_button_states_[IDX_RIGHT_CON][IDX_A_BUTTON] && button_states_local[IDX_RIGHT_CON][IDX_A_BUTTON]))
+            // if "a" button on the AVP controller is pressed
+            if ((!prev_gesture_states_[IDX_LEFT_CON][IDX_PINCH_SNAP_LEFT_GESTURE]  && gesture_states_local[IDX_LEFT_CON][IDX_PINCH_SNAP_LEFT_GESTURE]) ||
+                (!prev_gesture_states_[IDX_RIGHT_CON][IDX_PINCH_SNAP_LEFT_GESTURE] && gesture_states_local[IDX_RIGHT_CON][IDX_PINCH_SNAP_LEFT_GESTURE]))
             {
                 is_initialize_mode_on_ = true;
 
@@ -220,18 +215,13 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
                     {
                         mtj_goal.joint_names.push_back(robot_name + "_" + model_updater_.arm_id_ + "_joint" + std::to_string(j+1));
                         mtj_goal.target_positions.push_back(HomePose(j));
-                        if(model_updater_.num_robots_ == 2 && has_mobile_ &&  j == 0)
-                        {
-                            if(robot_name.find("left")  != std::string::npos) mtj_goal.target_positions.back() -= M_PI / 6;
-                            if(robot_name.find("right") != std::string::npos) mtj_goal.target_positions.back() += M_PI / 6;
-                        }
                     }
                 }
                 mtj_goal.max_velocity_scaling_factor     = 0.1;
                 mtj_goal.max_acceleration_scaling_factor = 0.1;
 
                 // When MoveToJoint succeeds (trajectory sent to JTC), set waiting_for_jtc_ so
-                // the JTC status subscriber re-activates ViveTracker after the robot finishes moving.
+                // the JTC status subscriber re-activates AppleVisionPro after the robot finishes moving.
                 auto send_opts = rclcpp_action::Client<MoveToJointAction>::SendGoalOptions();
                 send_opts.result_callback =
                     [this](const rclcpp_action::ClientGoalHandle<MoveToJointAction>::WrappedResult&)
@@ -245,7 +235,7 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
                             "[%s] Initialize mode ON — goal sent to fr3_move_to_joint, yielding",
                             name_.c_str());
 
-                // Yield: deactivate ViveTracker so MoveToJoint can become active_server_
+                // Yield: deactivate AppleVisionPro so MoveToJoint can become active_server_
                 return ComputeResult::SUCCEEDED;
             }
         }
@@ -256,7 +246,7 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
         // Left controller
         if (!left_controller_ee_name_.empty())
         {
-        if (!prev_button_states_[IDX_LEFT_CON][IDX_TRIGGER_BUTTON] && button_states_local[IDX_LEFT_CON][IDX_TRIGGER_BUTTON])
+            if (!prev_gesture_states_[IDX_LEFT_CON][IDX_DOUBLE_TAP_GESTURE] && gesture_states_local[IDX_LEFT_CON][IDX_DOUBLE_TAP_GESTURE])
             {
                 const std::string robot_name = getRobotNameFromEEName(left_controller_ee_name_);
                 if (!robot_name.empty())
@@ -265,12 +255,12 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
                     if (is_gripper_mode_on_[IDX_LEFT_CON])
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] lhand trigger released → GripperGrasp('%s')", name_.c_str(), robot_name.c_str());
-                        fr3_model_updater_.GripperGrasp(robot_name);
+                        fr3_husky_model_updater_.GripperGrasp(robot_name);
                     }
                     else
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] lhand trigger released → GripperOpen('%s')", name_.c_str(), robot_name.c_str());
-                        fr3_model_updater_.GripperOpen(robot_name);
+                        fr3_husky_model_updater_.GripperOpen(robot_name);
                     }
                 }
             }
@@ -279,7 +269,7 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
         // Right controller
         if (!right_controller_ee_name_.empty())
         {
-            if (!prev_button_states_[IDX_RIGHT_CON][IDX_TRIGGER_BUTTON] && button_states_local[IDX_RIGHT_CON][IDX_TRIGGER_BUTTON])
+            if (!prev_gesture_states_[IDX_RIGHT_CON][IDX_DOUBLE_TAP_GESTURE] && gesture_states_local[IDX_RIGHT_CON][IDX_DOUBLE_TAP_GESTURE])
             {
                 const std::string robot_name = getRobotNameFromEEName(right_controller_ee_name_);
                 if (!robot_name.empty())
@@ -288,12 +278,12 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
                     if (is_gripper_mode_on_[IDX_RIGHT_CON])
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] rhand trigger released → GripperGrasp('%s')", name_.c_str(), robot_name.c_str());
-                        fr3_model_updater_.GripperGrasp(robot_name);
+                        fr3_husky_model_updater_.GripperGrasp(robot_name);
                     }
                     else
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] rhand trigger released → GripperOpen('%s')", name_.c_str(), robot_name.c_str());
-                        fr3_model_updater_.GripperOpen(robot_name);
+                        fr3_husky_model_updater_.GripperOpen(robot_name);
                     }
                 }
             }
@@ -301,44 +291,81 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
     }
 
     // Manipulator control
-    {
-        // Check mouse mode
+    {   
+
+        // Check real-time hand tracking mode
         for(size_t i = 0; i < NUM_CONTROLLERS; ++i)
         {
-            if(!is_mouse_mode_on_[i] && button_states_local[i][IDX_GRIP_BUTTON]) // activate mouse mode when "grip" button pressed
+            // tracking mode change
+            if(!is_tracking_mode_on_[i] && gesture_states_local[i][IDX_PINCH_SNAP_UP_GESTURE]) // activate tracking mode
             {
-                RCLCPP_INFO(node_->get_logger(), "[%s] %s Mouse Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
-                is_mouse_mode_on_[i] = true;
+                RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
+                is_tracking_mode_on_[i] = true;
     
                 controller_poses_init_[i] = controller_poses_local[i];
                 if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
                 else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
+
+
+                // remove
+                std::cout << "controller_poses_init_[0].translation().transpose(): " << controller_poses_init_[0].translation().transpose() << std::endl;
+                std::cout << "controller_poses_init_[0].linear(): " << controller_poses_init_[0].linear() << std::endl;
+                std::cout << "ee_data_[left_controller_ee_name_].x_init.linear(): " << ee_data_[left_controller_ee_name_].x_init.linear() << std::endl;
+                const Eigen::Matrix3d R_ee_init2con_init = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * tracker_base2robot_base_[IDX_LEFT_CON].transpose() * controller_poses_init_[IDX_LEFT_CON].linear();
+                std::cout << "R_ee_init2con_init (left): " << R_ee_init2con_init << std::endl;
+
+
             }
-            else if(is_mouse_mode_on_[i] && !button_states_local[i][IDX_GRIP_BUTTON]) // deactivate mouse mode when grip button released
+            else if(is_tracking_mode_on_[i] && gesture_states_local[i][IDX_PINCH_SNAP_DOWN_GESTURE]) // deactivate tracking mode
             {
-                RCLCPP_INFO(node_->get_logger(), "[%s] %s Mouse Mode deactivated!", name_.c_str(), (i==0)?"Left":"Right");
-                is_mouse_mode_on_[i] = false;
+                RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode deactivated!", name_.c_str(), (i==0)?"Left":"Right");
+                is_tracking_mode_on_[i] = false;
     
                 controller_poses_init_[i] = controller_poses_local[i];
                 if(i == IDX_LEFT_CON && !left_controller_ee_name_.empty())        ee_data_[left_controller_ee_name_].setInit();
                 else if(i == IDX_RIGHT_CON && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
             }
-        }
+            
+            // temporarily deactivate tracking when pinch motion
+            if(!prev_gesture_states_[i][IDX_PINCH_GESTURE] && gesture_states_local[i][IDX_PINCH_GESTURE]) // deactivate tracking mode
+            {
+                RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode deactivated!", name_.c_str(), (i==0)?"Left":"Right");
+                is_tracking_mode_on_[i] = false;
     
+                controller_poses_init_[i] = controller_poses_local[i];
+                if(i == IDX_LEFT_CON && !left_controller_ee_name_.empty())        ee_data_[left_controller_ee_name_].setInit();
+                else if(i == IDX_RIGHT_CON && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
+            }
+            else if(prev_gesture_states_[i][IDX_PINCH_GESTURE] && !gesture_states_local[i][IDX_PINCH_GESTURE]) // activate tracking mode
+            {
+                RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
+                is_tracking_mode_on_[i] = true;
+    
+                controller_poses_init_[i] = controller_poses_local[i];
+                if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
+                else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
+            }
+        }
         
-        if(!left_controller_ee_name_.empty()) // left vive controller
+        
+        if(!left_controller_ee_name_.empty()) // left AVP controller
         {
+
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
             Eigen::Vector6d target_vel;
             target_pose_diff.setIdentity();
             target_vel.setZero();
-            if(is_mouse_mode_on_[IDX_LEFT_CON])
+            if(is_tracking_mode_on_[IDX_LEFT_CON])
             {
+    
                 const Eigen::Affine3d T_con_init2con_cur = controller_poses_init_[IDX_LEFT_CON].inverse() * controller_poses_local[IDX_LEFT_CON];
                 const Eigen::Matrix3d R_ee_init2con_init = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * tracker_base2robot_base_[IDX_LEFT_CON].transpose() * controller_poses_init_[IDX_LEFT_CON].linear();
     
                 // Position
                 target_pose_diff.translation() = controller_pos_multiplier_ * R_ee_init2con_init * T_con_init2con_cur.translation();
+
+
+
     
                 // Orientation: using similarity transformation
                 target_pose_diff.linear().setIdentity();
@@ -358,14 +385,14 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
             ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
         }
     
-        if(!right_controller_ee_name_.empty()) // right vive controller
+        if(!right_controller_ee_name_.empty()) // right AVP controller
         {
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
             Eigen::Vector6d target_vel;
             target_pose_diff.setIdentity();
             target_vel.setZero();
-            if(is_mouse_mode_on_[IDX_RIGHT_CON])
-            {    
+            if(is_tracking_mode_on_[IDX_RIGHT_CON])
+            {
                 const Eigen::Affine3d T_con_init2con_cur = controller_poses_init_[IDX_RIGHT_CON].inverse() * controller_poses_local[IDX_RIGHT_CON];
                 const Eigen::Matrix3d R_ee_init2con_init = ee_data_[right_controller_ee_name_].x_init.linear().transpose() * tracker_base2robot_base_[IDX_RIGHT_CON].transpose() * controller_poses_init_[IDX_RIGHT_CON].linear();
     
@@ -392,50 +419,62 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, co
     
         bool is_qp_solved = true;
         std::string time_verbose = "";
+
+
+        const int mani_dof = fr3_husky_model_updater_.robot_controller_->getManipulatorDof();
+        const int mobi_dof = fr3_husky_model_updater_.robot_controller_->getMobileDof();
+
+        Eigen::VectorXd qdot_mobile = Eigen::VectorXd::Zero(mobi_dof);
+        Eigen::VectorXd qddot_mobile = Eigen::VectorXd::Zero(mobi_dof);
+
         switch (control_mode_)
         {
             case 0: // CLIK
-                fr3_model_updater_.robot_controller_->CLIKStep(ee_data_, fr3_model_updater_.qdot_desired_total_);
-                fr3_model_updater_.q_desired_total_ = fr3_model_updater_.q_total_ +
-                                                      fr3_model_updater_.dt_ * fr3_model_updater_.qdot_desired_total_;
+                                                                                                                     
+                fr3_husky_model_updater_.robot_controller_->CLIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_);
+                fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
+                fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
+                break;
                 
-                fr3_model_updater_.torque_desired_total_ = fr3_model_updater_.robot_controller_->moveJointTorqueStep(fr3_model_updater_.q_desired_total_,
-                                                                                                                     fr3_model_updater_.qdot_desired_total_,
-                                                                                                                     false);
+
                 break;
             case 1: // OSF
-                fr3_model_updater_.robot_controller_->OSFStep(ee_data_, fr3_model_updater_.torque_desired_total_);
+                fr3_husky_model_updater_.robot_controller_->OSFStep(ee_data_, qddot_mobile, fr3_husky_model_updater_.torque_desired_total_);
                 break;
+
             case 2: // QPIK
-                is_qp_solved = fr3_model_updater_.robot_controller_->QPIKStep(ee_data_, fr3_model_updater_.qdot_desired_total_, time_verbose);
-                if(!is_qp_solved) fr3_model_updater_.qdot_desired_total_.setZero();
-                fr3_model_updater_.q_desired_total_ = fr3_model_updater_.q_total_ +
-                                                      fr3_model_updater_.dt_ * fr3_model_updater_.qdot_desired_total_;
-                fr3_model_updater_.torque_desired_total_ = fr3_model_updater_.robot_controller_->moveJointTorqueStep(fr3_model_updater_.q_desired_total_,
-                                                                                                                     fr3_model_updater_.qdot_desired_total_,
-                                                                                                                     false);
+                is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, time_verbose);
+                if (!is_qp_solved) fr3_husky_model_updater_.qdot_desired_total_.setZero();
+                fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
+                fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
                 break;
+
+                
+                
             case 3: // QPID
-                is_qp_solved = fr3_model_updater_.robot_controller_->QPIDStep(ee_data_, fr3_model_updater_.torque_desired_total_, time_verbose);
-                if(!is_qp_solved) fr3_model_updater_.torque_desired_total_ = fr3_model_updater_.robot_data_->getGravity();
+                is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIDStep(ee_data_, qddot_mobile, fr3_husky_model_updater_.torque_desired_total_, time_verbose);
+                if (!is_qp_solved) fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_data_->getGravity();
                 break;
+
+                
             default:
+                fr3_husky_model_updater_.qdot_desired_total_.setZero();
+                fr3_husky_model_updater_.torque_desired_total_.setZero();
                 break;
         }
-    
-        fr3_model_updater_.writeCommand(fr3_model_updater_.torque_desired_total_ - fr3_model_updater_.g_total_); // robot_controller automatically add gravity force
+
+        fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_, Eigen::Vector2d::Zero());  // robot_controller automatically add gravity force
     
         auto fb = std::make_shared<ActionT::Feedback>();
         fb->is_qp_solved = is_qp_solved;
         fb->time_verbose = time_verbose;
         publishFeedback(fb);
-        
-        prev_button_states_ = button_states_;
+    
         return ComputeResult::RUNNING;
     }
 }
 
-void ViveTracker::onStop(StopReason reason)
+void AppleVisionPro::onStop(StopReason reason)
 {
     model_updater_.haltCommands();
 
@@ -456,16 +495,16 @@ void ViveTracker::onStop(StopReason reason)
     RCLCPP_INFO(node_->get_logger(), "[%s] stopped (%s)", name_.c_str(), reason_str);
 }
 
-ViveTracker::ResultPtr ViveTracker::makeResult(StopReason reason)
+AppleVisionPro::ResultPtr AppleVisionPro::makeResult(StopReason reason)
 {
     auto result = std::make_shared<ActionT::Result>();
     result->is_completed = true;
     return result;
 }
 
-void ViveTracker::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
-{
-    const double cutoff_freq = 100.;
+void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
+{   
+
     if(msg->poses.size() != NUM_TRACKERS)
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Size of PoseArray for tracker_pose (%ld) does not equal to 3.", name_.c_str(), msg->poses.size());
@@ -475,13 +514,10 @@ void ViveTracker::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr
         for(size_t i = 0; i < msg->poses.size(); ++i)
         {
             Eigen::Vector3d position(msg->poses[i].position.x, msg->poses[i].position.y, msg->poses[i].position.z);
-            position = dyros_math::lowPassFilter(position, controller_poses_[i].translation(), fr3_model_updater_.dt_, 1./cutoff_freq);
+            position = dyros_math::lowPassFilter(position, controller_poses_[i].translation(), 0.001, 0.002);
             Eigen::Quaterniond quaternion(msg->poses[i].orientation.w, msg->poses[i].orientation.x, msg->poses[i].orientation.y, msg->poses[i].orientation.z);
             quaternion.normalize();
-            Eigen::Quaterniond prev_quat(controller_poses_[i].linear());
-            const double alpha = fr3_model_updater_.dt_ / (fr3_model_updater_.dt_ + (1./cutoff_freq));
-            Eigen::Quaterniond filtered_quat = prev_quat.slerp(alpha, quaternion);
-            Eigen::Matrix3d orientation = filtered_quat.normalized().toRotationMatrix();
+            Eigen::Matrix3d orientation = quaternion.toRotationMatrix();
             {
                 std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
                 controller_poses_[i].translation() = position;
@@ -491,35 +527,37 @@ void ViveTracker::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr
     }
 }
 
-void ViveTracker::subLJoyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
+void AppleVisionPro::subLGestureCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg)
 {
-    if(msg->buttons.size() != NUM_BUTTONS)
+    if(msg->data.size() != NUM_GESTURES)
     {
-        RCLCPP_WARN(node_->get_logger(), "[%s] Size of buttons for lhand_joy (%ld) does not equal to %d.", name_.c_str(), msg->buttons.size(), NUM_BUTTONS);
+        RCLCPP_WARN(node_->get_logger(), "[%s] Size of Int32MultiArray for lhand_gesture (%ld) does not equal to 4.", name_.c_str(), msg->data.size());
     }
     else
     {
-        for(size_t i = 0; i < msg->buttons.size(); ++i)
+        prev_gesture_states_[IDX_LEFT_CON] = gesture_states_[IDX_LEFT_CON];
+        for(size_t i = 0; i < msg->data.size(); ++i)
         {
-            std::lock_guard<std::mutex> lock(button_state_mutex_);
-            button_states_[IDX_LEFT_CON][i] = (static_cast<int>(msg->buttons[i]) == 0) ? false : true;
+            std::lock_guard<std::mutex> lock(gesture_state_mutex_);
+            gesture_states_[IDX_LEFT_CON][i] = (static_cast<int>(msg->data[i]) == 0) ? false : true;
         }
 
     }
 }
 
-void ViveTracker::subRJoyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
+void AppleVisionPro::subRGestureCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg)
 {
-    if(msg->buttons.size() != NUM_BUTTONS)
+    if(msg->data.size() != NUM_GESTURES)
     {
-        RCLCPP_WARN(node_->get_logger(), "[%s] Size of buttons for rhand_joy (%ld) does not equal to %d.", name_.c_str(), msg->buttons.size(), NUM_BUTTONS);
+        RCLCPP_WARN(node_->get_logger(), "[%s] Size of Int32MultiArray for rhand_gesture (%ld) does not equal to 4.", name_.c_str(), msg->data.size());
     }
     else
     {
-        for(size_t i = 0; i < msg->buttons.size(); ++i)
+        prev_gesture_states_[IDX_RIGHT_CON] = gesture_states_[IDX_RIGHT_CON];
+        for(size_t i = 0; i < msg->data.size(); ++i)
         {
-            std::lock_guard<std::mutex> lock(button_state_mutex_);
-            button_states_[IDX_RIGHT_CON][i] = (static_cast<int>(msg->buttons[i]) == 0) ? false : true;
+            std::lock_guard<std::mutex> lock(gesture_state_mutex_);
+            gesture_states_[IDX_RIGHT_CON][i] = (static_cast<int>(msg->data[i]) == 0) ? false : true;
         }
 
     }
@@ -527,12 +565,14 @@ void ViveTracker::subRJoyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
 
 
 // Register this server into global registry (executed when this TU is linked)
-REGISTER_FR3_ACTION_SERVER(ViveTracker, "fr3_vive_tracker")
+// REGISTER_FR3_ACTION_SERVER(AppleVisionPro, "fr3_AVP_tracker")
+REGISTER_FR3_HUSKY_ACTION_SERVER(AppleVisionPro, "fr3_AVP_tracker")
+
 
 }  // namespace fr3_husky_controller::servers::fr3
 /*
 # send goal 
-ros2 action send_goal /fr3_vive_tracker fr3_husky_msgs/action/ViveTracker \
+ros2 action send_goal /fr3_AVP_tracker fr3_husky_msgs/action/AppleVisionPro \
 "{mode: 1, left_controller_ee_name: 'left_fr3_hand_tcp', right_controller_ee_name: 'right_fr3_hand_tcp', move_orientation: false, controller_pos_multiplier: 1.0, controller_ori_multiplier: 1.0}" \
 --feedback
 */

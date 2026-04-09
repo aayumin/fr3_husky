@@ -29,7 +29,9 @@ JointTrajectoryController::JointTrajectoryController(
 : Base(name, node, model_updater),
   fr3_husky_model_updater_(getFR3HuskyModelUpdater(model_updater, name))
 {
+    mode_ = ServerMode::CONTROLLER; 
     RCLCPP_INFO(node_->get_logger(), "[%s] JointTrajectoryController created", name_.c_str());
+
 }
 
 // ============================================================
@@ -98,6 +100,12 @@ bool JointTrajectoryController::acceptGoal(const ActionT::Goal& goal)
 
 void JointTrajectoryController::onGoalAccepted(const ActionT::Goal& goal)
 {
+    fr3_husky_model_updater_.setInitFromCurrent();
+    q_hold_            = fr3_husky_model_updater_.q_total_;
+    start_time_set_    = false;
+    trajectory_done_   = false;
+    result_error_code_ = ActionT::Result::SUCCESSFUL;
+
     trajectory_          = goal.trajectory;
     path_tolerance_      = goal.path_tolerance;
     goal_tolerance_      = goal.goal_tolerance;
@@ -108,19 +116,15 @@ void JointTrajectoryController::onGoalAccepted(const ActionT::Goal& goal)
         goal_to_cmd_index_[i] = resolveJointIndex(trajectory_.joint_names[i]);
 
     RCLCPP_INFO(node_->get_logger(),
-                "[%s] Goal accepted: %zu joints, %zu waypoints",
+                "[%s] Goal accepted: %zu joints, %zu waypoints, q_hold=%ld",
                 name_.c_str(),
                 trajectory_.joint_names.size(),
-                trajectory_.points.size());
+                trajectory_.points.size(),
+                static_cast<long>(q_hold_.size()));
 }
 
 void JointTrajectoryController::onStart()
 {
-    fr3_husky_model_updater_.setInitFromCurrent();
-    q_hold_           = fr3_husky_model_updater_.q_total_;
-    start_time_set_   = false;
-    trajectory_done_  = false;
-    result_error_code_ = ActionT::Result::SUCCESSFUL;
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
 }
 
@@ -131,11 +135,68 @@ void JointTrajectoryController::onStart()
 JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
     const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
+
+
+    if (trajectory_.points.empty())
+    {
+        const Eigen::Vector2d wheel_zero = Eigen::Vector2d::Zero();
+
+        if (model_updater_.HasEffortCommandInterface())
+        {
+            model_updater_.haltCommands();
+        }
+        else if (model_updater_.HasVelocityCommandInterface())
+        {
+            fr3_husky_model_updater_.qdot_desired_total_.setZero();
+            fr3_husky_model_updater_.writeCommand(
+                fr3_husky_model_updater_.qdot_desired_total_,
+                wheel_zero);
+        }
+        else if (model_updater_.HasPositionCommandInterface())
+        {
+            fr3_husky_model_updater_.q_desired_total_ =
+                fr3_husky_model_updater_.q_total_;
+            fr3_husky_model_updater_.writeCommand(
+                fr3_husky_model_updater_.q_desired_total_,
+                wheel_zero);
+        }
+
+        return ComputeResult::RUNNING;
+    }
+
+
+    if (q_hold_.size() != static_cast<Eigen::Index>(model_updater_.manipulator_dof_))
+    {
+        RCLCPP_ERROR(node_->get_logger(),
+                    "[%s] Invalid q_hold size: q_hold=%ld, manipulator_dof=%zu",
+                    name_.c_str(),
+                    static_cast<long>(q_hold_.size()),
+                    model_updater_.manipulator_dof_);
+        result_error_code_ = ActionT::Result::INVALID_JOINTS;
+        return ComputeResult::ABORTED;
+    }
+
+    if (fr3_husky_model_updater_.q_total_.size() < static_cast<Eigen::Index>(model_updater_.manipulator_dof_) ||
+        fr3_husky_model_updater_.qdot_total_.size() < static_cast<Eigen::Index>(model_updater_.manipulator_dof_))
+    {
+        RCLCPP_ERROR(node_->get_logger(),
+                    "[%s] State vector size mismatch: manipulator_dof=%zu, q_total=%ld, qdot_total=%ld",
+                    name_.c_str(),
+                    model_updater_.manipulator_dof_,
+                    static_cast<long>(fr3_husky_model_updater_.q_total_.size()),
+                    static_cast<long>(fr3_husky_model_updater_.qdot_total_.size()));
+        result_error_code_ = ActionT::Result::INVALID_JOINTS;
+        return ComputeResult::ABORTED;
+    }
+
+
+
     if (!start_time_set_)
     {
         start_time_     = time;
         start_time_set_ = true;
     }
+
 
     const auto&  points        = trajectory_.points;
     const size_t n_pts         = points.size();
@@ -149,16 +210,27 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
     Eigen::VectorXd q_desired    = q_hold_;
     Eigen::VectorXd qdot_desired = Eigen::VectorXd::Zero(total_dof);
 
+
+
+
     if (at_goal)
     {
         for (size_t i = 0; i < n_goal_joints; ++i)
         {
             const int idx = goal_to_cmd_index_[i];
             if (idx < 0) continue;
+            if (idx >= q_desired.size() || idx >= qdot_desired.size()) {
+                RCLCPP_ERROR(node_->get_logger(),
+                            "[%s] Invalid joint index at goal: idx=%d", name_.c_str(), idx);
+                result_error_code_ = ActionT::Result::INVALID_JOINTS;
+                return ComputeResult::ABORTED;
+            }
             q_desired(idx) = points.back().positions[i];
             if (!points.back().velocities.empty())
                 qdot_desired(idx) = points.back().velocities[i];
         }
+
+        
     }
     else
     {
@@ -172,6 +244,7 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
             }
         }
 
+
         const double t_end = rclcpp::Duration(points[seg_end].time_from_start).seconds();
         double t_start = 0.0;
 
@@ -180,12 +253,20 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
         Eigen::VectorXd qdot_seg_start = Eigen::VectorXd::Zero(total_dof);
         Eigen::VectorXd qdot_seg_end   = Eigen::VectorXd::Zero(total_dof);
 
+
+        
         if (seg_end == 0)
         {
             for (size_t i = 0; i < n_goal_joints; ++i)
             {
                 const int idx = goal_to_cmd_index_[i];
                 if (idx < 0) continue;
+                if (idx >= q_seg_end.size() || idx >= qdot_seg_end.size()) {
+                    RCLCPP_ERROR(node_->get_logger(),
+                                "[%s] Invalid joint index in first segment: idx=%d", name_.c_str(), idx);
+                    result_error_code_ = ActionT::Result::INVALID_JOINTS;
+                    return ComputeResult::ABORTED;
+                }
                 q_seg_end(idx) = points[0].positions[i];
                 if (!points[0].velocities.empty())
                     qdot_seg_end(idx) = points[0].velocities[i];
@@ -198,6 +279,13 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
             {
                 const int idx = goal_to_cmd_index_[i];
                 if (idx < 0) continue;
+                if (idx >= q_seg_start.size() || idx >= q_seg_end.size() ||
+                    idx >= qdot_seg_start.size() || idx >= qdot_seg_end.size()) {
+                    RCLCPP_ERROR(node_->get_logger(),
+                                "[%s] Invalid joint index in segment: idx=%d", name_.c_str(), idx);
+                    result_error_code_ = ActionT::Result::INVALID_JOINTS;
+                    return ComputeResult::ABORTED;
+                }
                 if (seg_end > 1)
                 {
                     q_seg_start(idx) = points[seg_end - 1].positions[i];
@@ -213,6 +301,7 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
         const double duration       = t_end - t_start;
         const bool   has_velocities = !points[seg_end].velocities.empty();
 
+
         if (fr3_husky_model_updater_.robot_controller_ && has_velocities && duration > 0.0)
         {
             q_desired = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointPositionCubic(
@@ -221,21 +310,27 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
             qdot_desired = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointVelocityCubic(
                 q_seg_end, qdot_seg_end, q_seg_start, qdot_seg_start,
                 elapsed, t_start, duration);
+
         }
         else if (duration > 0.0)
         {
             const double alpha = std::clamp((elapsed - t_start) / duration, 0.0, 1.0);
             q_desired    = q_seg_start + alpha * (q_seg_end - q_seg_start);
             qdot_desired = (q_seg_end - q_seg_start) / duration;
+
         }
         else
         {
             q_desired = q_seg_end;
+
         }
     }
 
+
+
     // ---- Write command (arm + wheels fixed) ----
     const Eigen::Vector2d wheel_zero = Eigen::Vector2d::Zero();
+
 
     if (model_updater_.HasEffortCommandInterface())
     {
@@ -284,10 +379,22 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
     fb->actual.velocities.assign(n_goal_joints, 0.0);
     fb->error.velocities.assign(n_goal_joints, 0.0);
 
+
+    
+
     for (size_t i = 0; i < n_goal_joints; ++i)
     {
         const int idx = goal_to_cmd_index_[i];
         if (idx < 0) continue;
+        if (idx >= q_desired.size() ||
+            idx >= qdot_desired.size() ||
+            idx >= fr3_husky_model_updater_.q_total_.size() ||
+            idx >= fr3_husky_model_updater_.qdot_total_.size()) {
+            RCLCPP_ERROR(node_->get_logger(),
+                        "[%s] Invalid feedback joint index: idx=%d", name_.c_str(), idx);
+            result_error_code_ = ActionT::Result::INVALID_JOINTS;
+            return ComputeResult::ABORTED;
+        }
         fb->desired.positions[i]  = q_desired(idx);
         fb->actual.positions[i]   = fr3_husky_model_updater_.q_total_(idx);
         fb->error.positions[i]    = q_desired(idx) - fr3_husky_model_updater_.q_total_(idx);
@@ -297,12 +404,14 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
     }
     publishFeedback(fb);
 
+
     if (!at_goal && checkTolerance(path_tolerance_, fb->error.positions))
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Path tolerance violated", name_.c_str());
         result_error_code_ = ActionT::Result::PATH_TOLERANCE_VIOLATED;
         return ComputeResult::ABORTED;
     }
+
 
     if (at_goal)
     {
@@ -312,7 +421,13 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
             trajectory_done_time_ = time;
         }
         if (!checkTolerance(goal_tolerance_, fb->error.positions))
+        {
+            trajectory_ = trajectory_msgs::msg::JointTrajectory{};
+            goal_to_cmd_index_.clear();
+            start_time_set_ = false;
+            trajectory_done_ = false;   
             return ComputeResult::SUCCEEDED;
+        }
 
         const double goal_time_tol   = goal_time_tolerance_.seconds();
         const double time_since_done = (time - trajectory_done_time_).seconds();
@@ -324,8 +439,11 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
             result_error_code_ = ActionT::Result::GOAL_TOLERANCE_VIOLATED;
             return ComputeResult::ABORTED;
         }
+
+
         return ComputeResult::RUNNING;
     }
+
 
     return ComputeResult::RUNNING;
 }
@@ -338,12 +456,16 @@ void JointTrajectoryController::onStop(StopReason reason)
 {
     model_updater_.haltCommands();
 
+    trajectory_ = trajectory_msgs::msg::JointTrajectory{};
+    goal_to_cmd_index_.clear();
+    start_time_set_ = false;
+    trajectory_done_ = false;
+
     const char* rs = (reason == StopReason::CANCELED)  ? "canceled"  :
                      (reason == StopReason::SUCCEEDED)  ? "succeeded" :
                      (reason == StopReason::ABORTED)    ? "aborted"   : "none";
     RCLCPP_INFO(node_->get_logger(), "[%s] stopped (%s)", name_.c_str(), rs);
 }
-
 JointTrajectoryController::ResultPtr JointTrajectoryController::makeResult(StopReason reason)
 {
     auto result = std::make_shared<ActionT::Result>();

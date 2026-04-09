@@ -71,10 +71,7 @@ private:
 
     rclcpp_action::Client<FJT>::SharedPtr jtc_client_;
 
-    rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr jtc_status_sub_;
-    std::atomic<bool> jtc_busy_{false};
-
-    enum class PlanState : uint8_t { PLANNING, READY, FAILED };
+    enum class PlanState : uint8_t { PLANNING, EXECUTING, DONE, FAILED };
     std::atomic<PlanState> plan_state_{PlanState::PLANNING};
     std::atomic<bool>      cancel_flag_{false};
     std::atomic<bool>      handoff_requested_{false};
@@ -90,6 +87,11 @@ private:
     Eigen::VectorXd q_hold_;
 
     int32_t result_error_code_{0};
+
+
+    // ---- Goal handle --------------------------------------------------
+    std::shared_ptr<GoalHandleFJT> jtc_goal_handle_;
+    std::mutex jtc_goal_mutex_;
 };
 
 }  // namespace fr3_husky_controller::servers::fr3_husky

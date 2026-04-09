@@ -47,6 +47,8 @@ void GravityCompensation::onGoalAccepted(const Goal& goal)
 {
     use_qp_ = goal.use_qp;
     RCLCPP_INFO(node_->get_logger(), "[%s] use_qp: %s", name_.c_str(), use_qp_ ?  "true" : "false");
+
+    requestActivate();
 }
 
 void GravityCompensation::onStart()

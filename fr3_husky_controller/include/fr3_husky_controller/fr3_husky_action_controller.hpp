@@ -68,6 +68,7 @@ namespace std
 
 #include <fr3_husky_controller/servers/action_server_base.hpp>
 #include <fr3_husky_controller/servers/idle_control.hpp>
+#include <fr3_husky_controller/servers/fr3_husky/apple_vision_pro_action_server.hpp>
 
 
 namespace ConsoleColor 
@@ -194,8 +195,11 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         // ========================================================================
         std::unique_ptr<FR3HuskyModelUpdater> model_updater_;
         bool loadDRCGains(std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller);
-        std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> action_servers_;
-        std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> active_server_;
+
+        std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> task_servers_;
+        std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> controller_servers_;
+
+        std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> active_task_;
         std::unique_ptr<fr3_husky_controller::servers::IdleControl> idle_control_;
 
 };

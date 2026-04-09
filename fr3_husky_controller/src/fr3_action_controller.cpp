@@ -258,9 +258,23 @@ CallbackReturn FR3ActionController::on_configure(const rclcpp_lifecycle::State& 
         }
     }
 
-    action_servers_ = servers::ActionServerManager::createAllFR3(get_node(), *model_updater_);
-    active_server_.reset();
-    
+    {
+        auto all_servers = servers::ActionServerManager::createAllFR3(get_node(), *model_updater_);
+
+        task_servers_.clear();
+        controller_servers_.clear();
+
+        for (auto& s : all_servers)
+        {
+            if (s->mode_ == fr3_husky_controller::servers::ActionServerManager::ServerMode::CONTROLLER)
+                controller_servers_.push_back(s);
+            else
+                task_servers_.push_back(s);
+        }
+    }
+
+    active_task_.reset();
+
     idle_control_ = std::make_unique<servers::IdleControl>("fr3_idle", get_node(), *model_updater_);
 
 
@@ -373,7 +387,7 @@ controller_interface::CallbackReturn FR3ActionController::on_deactivate(const rc
     return CallbackReturn::SUCCESS;
 }
 
-controller_interface::return_type FR3ActionController::update(const rclcpp::Time& time, const rclcpp::Duration& period)
+controller_interface::return_type FR3ActionController::update( const rclcpp::Time& time, const rclcpp::Duration& period)
 {
     if (!model_updater_)
     {
@@ -385,7 +399,7 @@ controller_interface::return_type FR3ActionController::update(const rclcpp::Time
     {
         if (!is_halted_)
         {
-            if (model_updater_) model_updater_->haltCommands();
+            model_updater_->haltCommands();
             is_halted_ = true;
         }
         return controller_interface::return_type::OK;
@@ -395,71 +409,98 @@ controller_interface::return_type FR3ActionController::update(const rclcpp::Time
     model_updater_->updateJointStates();
     model_updater_->updateRobotData();
 
-    // 1. Deactivate current server if it is done or canceled.
-    //    Do this BEFORE scanning for new activations so that a server finishing in this
-    //    cycle frees the slot before the next server's pending activate is evaluated.
-    if (active_server_)
+    
+
+    // 1. active task 종료/취소 처리
+    if (active_task_)
     {
-        const bool cancel = active_server_->consumeCancelRequest();
-        const bool still_active = active_server_->isActive();
+        const bool cancel = active_task_->consumeCancelRequest();
+        const bool still_active = active_task_->isActive();
 
         if (cancel || !still_active)
         {
-            active_server_->onDeactivated();
-            active_server_.reset();
+            active_task_->onDeactivated();
+            active_task_.reset();
         }
     }
 
-    // 2. Scan for activate requests; higher-priority servers preempt lower-priority ones.
+    // 2. task activate 요청 스캔
     {
         std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> best;
         int best_p = std::numeric_limits<int>::min();
 
-        for (auto& s : action_servers_)
+        for (auto& s : task_servers_)
         {
             if (s->consumeActivateRequest())
             {
                 const int p = s->priority();
-                if (!best || p > best_p) { best = s; best_p = p; }
+                if (!best || p > best_p)
+                {
+                    best = s;
+                    best_p = p;
+                }
             }
         }
 
         if (best)
         {
-            if (!active_server_)
+            if (!active_task_)
             {
-                active_server_ = best;
-                active_server_->onActivated();
+                active_task_ = best;
+                active_task_->onActivated();
             }
-            else if (best_p > active_server_->priority())
+            else if (best.get() != active_task_.get())
             {
-                RCLCPP_INFO(get_node()->get_logger(),
-                            "[Controller] Preempting [%s] (priority=%d) with [%s] (priority=%d)",
-                            active_server_->getName().c_str(), active_server_->priority(),
-                            best->getName().c_str(), best_p);
-                active_server_->onDeactivated();
-                active_server_.reset();
-                active_server_ = best;
-                active_server_->onActivated();
+                if (active_task_->canBePreempted() && best_p > active_task_->priority())
+                {
+                    RCLCPP_INFO(
+                        get_node()->get_logger(),
+                        "[Controller] Preempting [%s] (priority=%d) with [%s] (priority=%d)",
+                        active_task_->getName().c_str(), active_task_->priority(),
+                        best->getName().c_str(), best_p);
+
+                    active_task_->onDeactivated();
+                    active_task_.reset();
+
+                    active_task_ = best;
+                    active_task_->onActivated();
+                }
+                else
+                {
+                    RCLCPP_INFO(
+                        get_node()->get_logger(),
+                        "[Controller] Rejecting new task [%s] while [%s] is active",
+                        best->getName().c_str(),
+                        active_task_->getName().c_str());
+
+                    best->onDeactivated();
+                }
             }
-            // else: new server has equal/lower priority → cannot preempt, flag consumed.
-            // This is acceptable: equal/lower priority activation while a server runs
-            // is an unusual case not expected in normal operation.
         }
     }
 
-    if (active_server_)
+    // 3. controller 서버는 항상 update
+    for (auto& s : controller_servers_)
+    {
+        s->update(time, period);
+    }
+
+    // 4. active task 실행 or idle
+    if (active_task_)
     {
         if (idle_control_) idle_control_->onDeactivated();
-        active_server_->update(time, period);
+        active_task_->update(time, period);
     }
     else
     {
         if (idle_control_) idle_control_->compute(time, period);
     }
 
+
+
     return controller_interface::return_type::OK;
 }
+
 
 bool FR3ActionController::loadDRCGains(std::shared_ptr<drc::Manipulator::RobotController> robot_controller)
 {
