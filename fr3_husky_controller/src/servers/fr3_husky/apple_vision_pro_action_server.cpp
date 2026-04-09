@@ -310,6 +310,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             {
                 RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
                 is_tracking_mode_on_[i] = true;
+                is_first_target_left_ = true;
+                is_first_target_right_ = true;
     
                 controller_poses_init_[i] = controller_poses_local[i];
                 if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
@@ -340,6 +342,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             {
                 RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
                 is_tracking_mode_on_[i] = true;
+                is_first_target_left_ = true;
+                is_first_target_right_ = true;
     
                 controller_poses_init_[i] = controller_poses_local[i];
                 if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
@@ -381,8 +385,22 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 }
             }
     
-            ee_data_[left_controller_ee_name_].x_desired = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
+            // ee_data_[left_controller_ee_name_].x_desired = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
+            // ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
+
+            // smoothed target pose
+            Eigen::Affine3d raw_target = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
+            double dt = fr3_husky_model_updater_.dt_;
+            if (is_first_target_left_)
+            {
+                prev_target_left_ = raw_target;
+                is_first_target_left_ = false;
+            }
+            Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
+            prev_target_left_ = smooth_target;
+            ee_data_[left_controller_ee_name_].x_desired = smooth_target;
             ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
+
         }
     
         if(!right_controller_ee_name_.empty()) // right AVP controller
@@ -413,8 +431,23 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 }
             }
     
-            ee_data_[right_controller_ee_name_].x_desired = ee_data_[right_controller_ee_name_].x_init * target_pose_diff;
+            // ee_data_[right_controller_ee_name_].x_desired = ee_data_[right_controller_ee_name_].x_init * target_pose_diff;
+            // ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+            
+
+            // smoothed target pose
+            Eigen::Affine3d raw_target = ee_data_[right_controller_ee_name_].x_init * target_pose_diff;
+            double dt = fr3_husky_model_updater_.dt_;
+            if (is_first_target_right_)
+            {
+                prev_target_right_ = raw_target;
+                is_first_target_right_ = false;
+            }
+            Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
+            prev_target_right_ = smooth_target;
+            ee_data_[right_controller_ee_name_].x_desired = smooth_target;
             ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+
         }
     
         bool is_qp_solved = true;
@@ -635,6 +668,44 @@ void AppleVisionPro::subRGestureCallback(const std_msgs::msg::Int32MultiArray::S
         }
 
     }
+}
+
+
+Eigen::Affine3d AppleVisionPro::smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt)
+{
+    Eigen::Affine3d result = prev;
+
+    // --- 1. Low-pass filter (position)
+    Eigen::Vector3d pos =
+        (1.0 - smoothing_alpha_) * prev.translation() +
+        smoothing_alpha_ * target.translation();
+
+    // --- 2. Velocity limit (position)
+    Eigen::Vector3d delta = pos - prev.translation();
+    double max_step = max_linear_vel_ * dt;
+
+    if (delta.norm() > max_step) delta = delta.normalized() * max_step;
+
+    result.translation() = prev.translation() + delta;
+
+    // --- 3. Orientation smoothing (slerp)
+    Eigen::Quaterniond q_prev(prev.linear());
+    Eigen::Quaterniond q_target(target.linear());
+
+    Eigen::Quaterniond q_interp = q_prev.slerp(smoothing_alpha_, q_target);
+
+    // --- 4. Angular velocity limit
+    Eigen::AngleAxisd aa(q_prev.inverse() * q_interp);
+    double max_angle = max_angular_vel_ * dt;
+
+    if (std::abs(aa.angle()) > max_angle)
+    {
+        aa.angle() = max_angle;
+        q_interp = q_prev * Eigen::Quaterniond(aa);
+    }
+
+    result.linear() = q_interp.toRotationMatrix();
+    return result;
 }
 
 

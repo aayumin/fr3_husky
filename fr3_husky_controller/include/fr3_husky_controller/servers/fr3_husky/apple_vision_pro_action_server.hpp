@@ -86,6 +86,18 @@ private:
     std::vector<Eigen::Matrix3d> tracker_base2robot_base_;
     std::map<std::string, drc::TaskSpaceData> ee_data_;
 
+
+    // smoothing
+    Eigen::Affine3d prev_target_left_ = Eigen::Affine3d::Identity();
+    Eigen::Affine3d prev_target_right_ = Eigen::Affine3d::Identity();
+    bool is_first_target_left_ = true;
+    bool is_first_target_right_ = true;
+    Eigen::Affine3d smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt);
+
+    double max_linear_vel_ = 0.3;   // m/s
+    double max_angular_vel_ = 1.0;  // rad/s
+    double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
+
     // action goal data
     int control_mode_;                     // 0: CLIK, 1: OSF, 2:QPIK, 3:QPID
     std::string left_controller_ee_name_;  // EE name for tracking left AVP controller
