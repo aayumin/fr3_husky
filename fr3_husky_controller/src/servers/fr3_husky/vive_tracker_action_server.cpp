@@ -515,6 +515,7 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& time, const 
                 }
                 if(ee_count > 0) avg_ee_pos_error /= ee_count;
 
+
                 const Eigen::Affine3d world2base_cur = fr3_husky_model_updater_.robot_data_->getPose("base_link");
                 const Eigen::Vector3d ee_error_base = world2base_cur.linear().transpose() * avg_ee_pos_error;
                 static constexpr double mobile_null_gain = 10.0; // [wheel_vel/m]: tune as needed

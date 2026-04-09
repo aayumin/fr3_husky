@@ -98,7 +98,6 @@ private:
     enum class PlanState : uint8_t { PLANNING, EXECUTING, DONE, FAILED };
     std::atomic<PlanState> plan_state_{PlanState::PLANNING};
     std::atomic<bool>      cancel_flag_{false};
-    std::atomic<bool>      handoff_requested_{false};
     std::string            plan_error_msg_;   ///< set by planning thread on failure
     std::mutex             msg_mutex_;        ///< guards plan_error_msg_
     std::thread            planning_thread_;

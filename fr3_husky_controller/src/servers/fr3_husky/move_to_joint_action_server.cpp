@@ -301,8 +301,7 @@ void MoveToJoint::runPlanning()
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    if (!handoff_requested_.load(std::memory_order_acquire) ||
-        cancel_flag_.load(std::memory_order_relaxed))
+    if (cancel_flag_.load(std::memory_order_relaxed))
     {
         RCLCPP_INFO(node_->get_logger(),
                     "[%s] skipping JTC handoff because the goal did not finish successfully",
@@ -426,7 +425,6 @@ void MoveToJoint::onGoalAccepted(const ActionT::Goal& goal)
                       ? goal.max_acceleration_scaling_factor : 0.1;
 
     cancel_flag_.store(false, std::memory_order_relaxed);
-    handoff_requested_.store(false, std::memory_order_relaxed);
     plan_state_.store(PlanState::PLANNING, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lk(msg_mutex_);
@@ -525,7 +523,6 @@ MoveToJoint::ComputeResult MoveToJoint::compute(
     fb->status_message = "Trajectory execution completed";
     publishFeedback(fb);
 
-    handoff_requested_.store(true, std::memory_order_release);
     result_error_code_ = 0;
     return ComputeResult::SUCCEEDED;
 }

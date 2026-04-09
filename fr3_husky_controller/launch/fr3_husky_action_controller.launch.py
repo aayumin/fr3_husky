@@ -317,7 +317,8 @@ def _launch_setup(context, *args, **kwargs):
             parameters=[
                 {'robot_description': mg_robot_desc},
                 {'robot_description_semantic': mg_srdf},
-                kinematics,
+                # kinematics,
+                {'robot_description_kinematics': kinematics},
                 ompl_cfg,
                 {'moveit_manage_controllers': False,
                  'trajectory_execution.allowed_execution_duration_scaling': 1.2,
