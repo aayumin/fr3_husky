@@ -291,24 +291,6 @@ void MoveToJoint::runPlanning()
         return;
     }
 
-    plan_state_.store(PlanState::READY, std::memory_order_release);
-
-    // Wait until MoveToJoint has fully finished before sending the lower-priority
-    // JTC goal. This avoids the controller consuming JTC's activate request while
-    // MoveToJoint is still the active_server_.
-    while (isActive() && !cancel_flag_.load(std::memory_order_relaxed))
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
-    if (cancel_flag_.load(std::memory_order_relaxed))
-    {
-        RCLCPP_INFO(node_->get_logger(),
-                    "[%s] skipping JTC handoff because the goal did not finish successfully",
-                    name_.c_str());
-        return;
-    }
-
     FJT::Goal jtc_goal;
     jtc_goal.trajectory = plan.trajectory_.joint_trajectory;
 
@@ -355,6 +337,7 @@ void MoveToJoint::runPlanning()
                 RCLCPP_INFO(node_->get_logger(),
                             "[%s] JTC execution completed successfully",
                             name_.c_str());
+                plan_state_.store(PlanState::DONE, std::memory_order_release);
             }
             else
             {

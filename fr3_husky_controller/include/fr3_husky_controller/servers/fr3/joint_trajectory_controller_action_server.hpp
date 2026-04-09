@@ -25,7 +25,7 @@ public:
     ~JointTrajectoryController() override = default;
 
     int priority() const override { return 8; }
-    bool allowPreemption() const override { return false; }  // if true, a new incoming goal preempts (aborts) the current one
+    bool allowPreemption() const override { return true; }  // if true, a new incoming goal preempts (aborts) the current one
 
 private:
     bool acceptGoal(const ActionT::Goal& goal) override;
