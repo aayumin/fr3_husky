@@ -97,6 +97,10 @@ private:
     std::mutex tracker_pose_mutex_;
     std::mutex gesture_state_mutex_;
 
+    // null space HomePose cubic
+    double control_start_time_{0.0};
+    Eigen::VectorXd q_init_for_home_; // joint config snapshot at manipulator mode start (for cubic null space)
+
     // initialize mode: -> send goal to fr3_move_to_joint
     const Eigen::Vector<double, FR3_DOF> HomePose{0., -0.785, 0.0, -2.356, 0.0, 1.571, 0.785};
     ActionT::Goal saved_avp_goal_{};  // saved goal params for auto-resume after init
@@ -109,6 +113,8 @@ private:
     // JTC completion monitoring: wait for JTC to finish executing before re-activating
     rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr jtc_status_sub_;
     std::atomic<bool> waiting_for_jtc_{false};
+
+
 };
 
 }  // namespace fr3_husky_controller::servers::fr3
