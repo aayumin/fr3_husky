@@ -97,7 +97,6 @@ CallbackReturn FR3HuskyActionController::on_init()
 CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
     
-        RCLCPP_INFO(get_node()->get_logger(), "[CFG] 1 start");
 
     // update parameters if they have changed
     if (param_listener_->is_old(params_))
@@ -106,7 +105,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         LOGI(get_node(), "Parameters were updated");
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 2 after params");
 
     // number of FR3 robot used
     num_robots_ = params_.robot_name.size();
@@ -116,7 +114,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         return CallbackReturn::FAILURE;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 3 num_robots");
 
     // check names in allowed name list & uniqueness 
     const std::unordered_set<std::string> allowed = {"left", "right"};
@@ -136,7 +133,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         }
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 4 check allowed_name");
 
     // get manipulator degrees of freedom
     manipulator_dof_ = params_.manipulator_joints.size();
@@ -146,7 +142,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         return CallbackReturn::FAILURE;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 5 check dof");
 
     // number of mobile wheel checking
     if (params_.left_wheel_names.size() != params_.right_wheel_names.size())
@@ -170,7 +165,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         return CallbackReturn::FAILURE;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 6 check mobile wheel");
 
     // command flags (exactly one will be true)
     has_position_command_interface_ = (params_.manipulator_command_interface == allowed_interface_types_[0]);
@@ -201,8 +195,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         return CallbackReturn::FAILURE;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 7 check command interface");
-
     // get sampling time dt_
     if (get_update_rate() == 0)
     {
@@ -232,7 +224,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
 
     heavy_init_done_ = false;
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] configure done (lightweight)");
     return CallbackReturn::SUCCESS;
 }
 
@@ -267,7 +258,6 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
         }
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 8 robot model");
 
     pinocchio::Model pin_model;
     pinocchio::urdf::buildModelFromXML(tmp_urdf_xml, pin_model);
@@ -281,7 +271,6 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
         if (has_hand) break;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 9 pinocchio model");
 
     // initialize dyros_robot_data & controller
     const std::string description_pkg = ament_index_cpp::get_package_share_directory("fr3_husky_description");
@@ -334,7 +323,6 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
         return CallbackReturn::ERROR;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 10 set joint index");
 
 
     drc::MobileManipulator::ActuatorIndex a;
@@ -354,8 +342,6 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
         return CallbackReturn::ERROR;
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 11 initialize robot data");
-
 
     std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller = std::make_shared<drc::MobileManipulator::RobotController>(robot_data);
 
@@ -370,7 +356,6 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
         ee_names_.push_back(ee_name);
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 12 robot model updater");
 
     model_updater_->setNode(get_node());
     model_updater_->setInterfaceFlags(has_position_state_interface_, has_velocity_state_interface_, has_effort_state_interface_,
@@ -379,58 +364,7 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     model_updater_->setDRCRobotData(std::move(robot_data));
     model_updater_->setDRCRobotController(std::move(robot_controller));
 
-    // Gripper action clients — created per robot arm when hand is present in URDF
-    model_updater_->has_hand_ = has_hand;
-    if (has_hand)
-    {
-        for (const auto& name : params_.robot_name)
-        {
-            const std::string prefix = name + "_franka_gripper";
-            GripperClients clients;
-            clients.grasp  = rclcpp_action::create_client<franka_msgs::action::Grasp>(get_node(), prefix + "/grasp");
-            clients.move   = rclcpp_action::create_client<franka_msgs::action::Move>(get_node(), prefix + "/move");
-            clients.homing = rclcpp_action::create_client<franka_msgs::action::Homing>(get_node(), prefix + "/homing");
-            model_updater_->gripper_clients_[name] = std::move(clients);
-            LOGI(get_node(), "Gripper action clients created for '%s' (prefix: %s)", name.c_str(), prefix.c_str());
-        }
-    }
-
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 13 gripper action client");
-
-
-    {
-        auto all_servers = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
-
-        task_servers_.clear();
-        controller_servers_.clear();
-
-        for (auto& s : all_servers)
-        {
-            if (s->mode_ == fr3_husky_controller::servers::ActionServerManager::ServerMode::CONTROLLER)
-                controller_servers_.push_back(s);
-            else
-                task_servers_.push_back(s);
-        }
-    }
-
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 14 after action servers");
-
-    active_task_.reset();
-
-    idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
-
-    // Odometry publishers
-    odometry_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>("~/odom", rclcpp::SystemDefaultsQoS());
-    odometry_transform_publisher_ = get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", rclcpp::SystemDefaultsQoS());
-
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 15 odometry publisher");
-
-
-    mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
-
-
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 16 before create wall timer");
-
+    
     // odom_timer_ = get_node()->create_wall_timer(
     //     std::chrono::duration<double>(1.0 / publish_rate_),
     //     [this]()
@@ -445,6 +379,10 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     return CallbackReturn::SUCCESS;
 
 }
+
+
+
+
 
 
 CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
@@ -462,7 +400,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     }
 
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 1 initial");
     
     // Register manipulator interfaces into JointHandle
     std::vector<std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>> state_by_type(allowed_interface_types_.size()); // [interface_type][joint_idx]
@@ -485,7 +422,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         }
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 2 after manipulator_state_interfaces");
 
     const auto & cmd_interface = params_.manipulator_command_interface;
     auto it = std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), cmd_interface);
@@ -508,8 +444,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     }
 
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 3 after get_ordered_interfaces");
-
     RobotHandle robot_handle;
     robot_handle.mani_joints.reserve(manipulator_dof_);
     for (size_t i = 0; i < manipulator_dof_; ++i)
@@ -527,7 +461,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
             handle.state[kEffortIndex] = state_by_type[kEffortIndex][i];
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 4 after robot_handle.mani_joints.reserve");
 
     // Register wheel interfaces
     auto configure_side = [this](const std::string & side, const std::vector<std::string> & wheel_names, std::vector<WheelHandle> & registered_handles)
@@ -580,8 +513,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     };
 
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 5 after register_wheel_interfaces");
-
     if (!configure_side("left", params_.left_wheel_names, robot_handle.left_wheels) ||
         !configure_side("right", params_.right_wheel_names, robot_handle.right_wheels))
     {
@@ -591,7 +522,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     model_updater_->setRobotHandles(std::move(robot_handle));
 
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 6 after setRobotHandles");
 
 
     // Assign Franka semantic component state interfaces
@@ -611,7 +541,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         }
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 7 after assign_loaned_state_interfaces");
 
 
     const bool joy_connected = isJoyConnected();
@@ -625,32 +554,120 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         LOGW(get_node(), "Joystick is not connected on topic '%s'. e-stop is disabled and controller continues.", kJoyTopic);
     }
 
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 8 after joy_connected");
 
 
     is_halted_ = false;
 
     play_time_ = get_node()->now().seconds();
-    model_updater_->updateJointStates();
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 9 after updateJointStates");
-
-    model_updater_->updateRobotData();
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 10 after updateRobotData");
-
-    model_updater_->setInitFromCurrent();
-    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 11 after setInitFromCurrent");
-
-
-    odom_timer_ = get_node()->create_wall_timer(
-        std::chrono::duration<double>(1.0 / publish_rate_),
-        [this]()
-        {
-            this->publishFromMobileStateBuffer();
-        }
-    );
-
     control_start_time_ = play_time_;
 
+    post_activate_init_done_ = false;
+    post_activate_init_running_ = false;
+
+
+    // model_updater_->updateJointStates();
+    // model_updater_->updateRobotData();
+    // model_updater_->setInitFromCurrent();
+
+
+    return CallbackReturn::SUCCESS;
+}
+
+controller_interface::CallbackReturn FR3HuskyActionController::finalize_post_activate_init()
+{
+    if (!model_updater_)
+    {
+        LOGE(get_node(), "Model updater is not configured.");
+        return CallbackReturn::ERROR;
+    }
+
+    if (post_activate_init_done_)
+    {
+        return CallbackReturn::SUCCESS;
+    }
+
+    if (post_activate_init_running_)
+    {
+        return CallbackReturn::SUCCESS;
+    }
+
+    post_activate_init_running_ = true;
+
+    model_updater_->has_hand_ = false;
+    for (const auto & ee_name : ee_names_)
+    {
+        if (ee_name.find("hand") != std::string::npos)
+        {
+            model_updater_->has_hand_ = true;
+            break;
+        }
+    }
+
+    if (model_updater_->has_hand_)
+    {
+        for (const auto& name : params_.robot_name)
+        {
+            if (model_updater_->gripper_clients_.find(name) == model_updater_->gripper_clients_.end())
+            {
+                const std::string prefix = name + "_franka_gripper";
+                GripperClients clients;
+                clients.grasp  = rclcpp_action::create_client<franka_msgs::action::Grasp>(get_node(), prefix + "/grasp");
+                clients.move   = rclcpp_action::create_client<franka_msgs::action::Move>(get_node(), prefix + "/move");
+                clients.homing = rclcpp_action::create_client<franka_msgs::action::Homing>(get_node(), prefix + "/homing");
+                model_updater_->gripper_clients_[name] = std::move(clients);
+                LOGI(get_node(), "Gripper action clients created for '%s' (prefix: %s)", name.c_str(), prefix.c_str());
+            }
+        }
+    }
+
+    auto all_servers = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
+
+    task_servers_.clear();
+    controller_servers_.clear();
+
+    for (auto& s : all_servers)
+    {
+        if (s->mode_ == fr3_husky_controller::servers::ActionServerManager::ServerMode::CONTROLLER)
+            controller_servers_.push_back(s);
+        else
+            task_servers_.push_back(s);
+    }
+
+    active_task_.reset();
+
+    idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
+
+    if (!odometry_publisher_)
+    {
+        odometry_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>("~/odom", rclcpp::SystemDefaultsQoS());
+    }
+
+    if (!odometry_transform_publisher_)
+    {
+        odometry_transform_publisher_ = get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", rclcpp::SystemDefaultsQoS());
+    }
+
+    mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
+
+    if (!odom_timer_)
+    {
+        odom_timer_ = get_node()->create_wall_timer(
+            std::chrono::duration<double>(1.0 / publish_rate_),
+            [this]()
+            {
+                this->publishFromMobileStateBuffer();
+            }
+        );
+    }
+
+    model_updater_->updateJointStates();
+    model_updater_->updateRobotData();
+    model_updater_->setInitFromCurrent();
+
+    post_activate_init_done_ = true;
+    post_activate_init_running_ = false;
+
+    LOGI(get_node(), "Post-activate initialization done.");
     return CallbackReturn::SUCCESS;
 }
 
@@ -669,12 +686,42 @@ CallbackReturn FR3HuskyActionController::on_deactivate(const rclcpp_lifecycle::S
     estop_button_pressed_.store(false, std::memory_order_release);
     joy_msg_received_.store(false, std::memory_order_release);
 
+    post_activate_init_done_ = false;
+    post_activate_init_running_ = false;
+
     return CallbackReturn::SUCCESS;
 }
 
 
 controller_interface::return_type FR3HuskyActionController::update(const rclcpp::Time& time, const rclcpp::Duration& period)
 {
+
+    if (!post_activate_init_done_)
+    {
+        const auto ret = finalize_post_activate_init();
+        if (ret != CallbackReturn::SUCCESS)
+        {
+            if (!is_halted_ && model_updater_)
+            {
+                model_updater_->haltCommands();
+                is_halted_ = true;
+            }
+            return controller_interface::return_type::ERROR;
+        }
+
+        if (!post_activate_init_done_)
+        {
+            if (!is_halted_ && model_updater_)
+            {
+                model_updater_->haltCommands();
+                is_halted_ = true;
+            }
+            return controller_interface::return_type::OK;
+        }
+    }
+
+
+
     if (!model_updater_)
     {
         LOGE(get_node(), "Model updater is not available during update loop.");
