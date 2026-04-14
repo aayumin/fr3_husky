@@ -92,9 +92,12 @@ CallbackReturn FR3HuskyActionController::on_init()
     return CallbackReturn::SUCCESS;
 }
 
+
+
 CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
-    RCLCPP_INFO(get_node()->get_logger(), "[CFG] 1 start");
+    
+        RCLCPP_INFO(get_node()->get_logger(), "[CFG] 1 start");
 
     // update parameters if they have changed
     if (param_listener_->is_old(params_))
@@ -207,6 +210,41 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
     }
     dt_ = 1.0 / static_cast<double>(get_update_rate());
 
+
+    if (!model_updater_)
+    {
+        model_updater_ = std::make_unique<FR3HuskyModelUpdater>();
+    }
+
+
+    publish_rate_ = params_.publish_rate;
+
+
+    joy_msg_received_.store(false, std::memory_order_release);
+    estop_button_pressed_.store(false, std::memory_order_release);
+    estop_is_active_ = false;
+    estop_button_index_warned_ = false;
+    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+        kJoyTopic, rclcpp::SystemDefaultsQoS(),
+        std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
+
+
+
+    heavy_init_done_ = false;
+
+    RCLCPP_INFO(get_node()->get_logger(), "[CFG] configure done (lightweight)");
+    return CallbackReturn::SUCCESS;
+}
+
+CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
+{
+    std::scoped_lock<std::mutex> lock(heavy_init_mutex_);
+    if (heavy_init_done_)
+    {
+        return CallbackReturn::SUCCESS;
+    }
+
+
     // for finding whether hand/mobile base exist
     auto tmp_node = rclcpp::Node::make_shared("_tmp_urdf_client_" + std::string(get_node()->get_name()));
     auto param_client = std::make_shared<rclcpp::SyncParametersClient>(tmp_node, "controller_manager");
@@ -255,7 +293,8 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
                       << " ros2_control:=false"
                       << " use_fake_hardware:=false"
                       << " fake_sensor_commands:=false"
-                      << " virtual_joint:=true";
+                      //   << " virtual_joint:=true";
+                      << " virtual_joint:=false";
     std::string robot_segmentation_description_param = segmentation_args.str();
     std::string robot_description_param = robot_segmentation_description_param + " ros2_control:=false"
                                                                                + " use_fake_hardware:=false"
@@ -331,11 +370,6 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         ee_names_.push_back(ee_name);
     }
 
-    if (!model_updater_)
-    {
-        model_updater_ = std::make_unique<FR3HuskyModelUpdater>();
-    }
-
     RCLCPP_INFO(get_node()->get_logger(), "[CFG] 12 robot model updater");
 
     model_updater_->setNode(get_node());
@@ -391,39 +425,45 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
 
     RCLCPP_INFO(get_node()->get_logger(), "[CFG] 15 odometry publisher");
 
-    publish_rate_ = params_.publish_rate;
 
     mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
 
-    joy_msg_received_.store(false, std::memory_order_release);
-    estop_button_pressed_.store(false, std::memory_order_release);
-    estop_is_active_ = false;
-    estop_button_index_warned_ = false;
-    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
-        kJoyTopic, rclcpp::SystemDefaultsQoS(),
-        std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
 
     RCLCPP_INFO(get_node()->get_logger(), "[CFG] 16 before create wall timer");
 
-    odom_timer_ = get_node()->create_wall_timer(
-        std::chrono::duration<double>(1.0 / publish_rate_),
-        [this]()
-        {
-            this->publishFromMobileStateBuffer();
-        }
-    );
+    // odom_timer_ = get_node()->create_wall_timer(
+    //     std::chrono::duration<double>(1.0 / publish_rate_),
+    //     [this]()
+    //     {
+    //         this->publishFromMobileStateBuffer();
+    //     }
+    // );
 
+
+    heavy_init_done_ = true;
+    LOGI(get_node(), "Heavy initialization done.");
     return CallbackReturn::SUCCESS;
+
 }
+
 
 CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
+    if (initialize_heavy_resources() != CallbackReturn::SUCCESS)
+    {
+        LOGE(get_node(), "Heavy initialization failed.");
+        return CallbackReturn::ERROR;
+    }
+
     if (!model_updater_)
     {
         LOGE(get_node(), "Model updater is not configured.");
         return CallbackReturn::ERROR;
     }
 
+
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 1 initial");
+    
     // Register manipulator interfaces into JointHandle
     std::vector<std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>> state_by_type(allowed_interface_types_.size()); // [interface_type][joint_idx]
     std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> cmd_by_type; // [joint_idx]
@@ -445,6 +485,8 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         }
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 2 after manipulator_state_interfaces");
+
     const auto & cmd_interface = params_.manipulator_command_interface;
     auto it = std::find(allowed_interface_types_.begin(), allowed_interface_types_.end(), cmd_interface);
     if (it == allowed_interface_types_.end())
@@ -465,6 +507,9 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         return CallbackReturn::ERROR;
     }
 
+
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 3 after get_ordered_interfaces");
+
     RobotHandle robot_handle;
     robot_handle.mani_joints.reserve(manipulator_dof_);
     for (size_t i = 0; i < manipulator_dof_; ++i)
@@ -482,6 +527,7 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
             handle.state[kEffortIndex] = state_by_type[kEffortIndex][i];
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 4 after robot_handle.mani_joints.reserve");
 
     // Register wheel interfaces
     auto configure_side = [this](const std::string & side, const std::vector<std::string> & wheel_names, std::vector<WheelHandle> & registered_handles)
@@ -533,6 +579,9 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         return true;
     };
 
+
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 5 after register_wheel_interfaces");
+
     if (!configure_side("left", params_.left_wheel_names, robot_handle.left_wheels) ||
         !configure_side("right", params_.right_wheel_names, robot_handle.right_wheels))
     {
@@ -540,6 +589,10 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     }
 
     model_updater_->setRobotHandles(std::move(robot_handle));
+
+
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 6 after setRobotHandles");
+
 
     // Assign Franka semantic component state interfaces
     if (use_franka_model_)
@@ -558,6 +611,9 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         }
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 7 after assign_loaned_state_interfaces");
+
+
     const bool joy_connected = isJoyConnected();
     if (params_.use_estop && !joy_connected)
     {
@@ -569,16 +625,36 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
         LOGW(get_node(), "Joystick is not connected on topic '%s'. e-stop is disabled and controller continues.", kJoyTopic);
     }
 
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 8 after joy_connected");
+
+
     is_halted_ = false;
 
     play_time_ = get_node()->now().seconds();
     model_updater_->updateJointStates();
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 9 after updateJointStates");
+
     model_updater_->updateRobotData();
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 10 after updateRobotData");
+
     model_updater_->setInitFromCurrent();
+    RCLCPP_INFO(get_node()->get_logger(), "[ACT] 11 after setInitFromCurrent");
+
+
+    odom_timer_ = get_node()->create_wall_timer(
+        std::chrono::duration<double>(1.0 / publish_rate_),
+        [this]()
+        {
+            this->publishFromMobileStateBuffer();
+        }
+    );
+
     control_start_time_ = play_time_;
 
     return CallbackReturn::SUCCESS;
 }
+
+
 
 CallbackReturn FR3HuskyActionController::on_deactivate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
