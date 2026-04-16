@@ -95,7 +95,7 @@ private:
     rclcpp_action::Client<FJT>::SharedPtr jtc_client_;
 
     // ---- Per-goal planning state (reset on every new goal) -------------------
-    enum class PlanState : uint8_t { PLANNING, EXECUTING, DONE, FAILED };
+    enum class PlanState : uint8_t { PLANNING, READY, EXECUTING, DONE, FAILED };
     std::atomic<PlanState> plan_state_{PlanState::PLANNING};
     std::atomic<bool>      cancel_flag_{false};
     std::string            plan_error_msg_;   ///< set by planning thread on failure
