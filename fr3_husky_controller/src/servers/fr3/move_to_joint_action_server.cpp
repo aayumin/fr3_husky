@@ -563,10 +563,10 @@ MoveToJoint::ComputeResult MoveToJoint::compute(
 
 void MoveToJoint::onStop(StopReason reason)
 {
-    cancel_flag_.store(true, std::memory_order_relaxed);
-
     if (reason == StopReason::CANCELED || reason == StopReason::ABORTED)
     {
+        cancel_flag_.store(true, std::memory_order_relaxed);
+
         std::shared_ptr<GoalHandleFJT> gh;
         {
             std::lock_guard<std::mutex> lk(jtc_goal_mutex_);
