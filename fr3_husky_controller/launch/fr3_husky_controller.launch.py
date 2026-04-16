@@ -4,7 +4,7 @@ import xacro
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, Shutdown
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
@@ -53,8 +53,18 @@ def _launch_setup(context, *args, **kwargs):
     load_gripper      = LaunchConfiguration('load_gripper').perform(context)
     use_fake_hardware = LaunchConfiguration('use_fake_hardware').perform(context)
     fake_sensor_commands = LaunchConfiguration('fake_sensor_commands').perform(context)
+    launch_rviz      = LaunchConfiguration('launch_rviz').perform(context)
     namespace         = LaunchConfiguration('namespace').perform(context)
     controller_name   = LaunchConfiguration('controller_name').perform(context)
+    launch_avp_bridge = LaunchConfiguration('launch_avp_bridge')
+    avp_bridge_script = LaunchConfiguration('avp_bridge_script')
+    avp_udp_ip        = LaunchConfiguration('avp_udp_ip')
+    avp_udp_port      = LaunchConfiguration('avp_udp_port')
+    avp_frame_id      = LaunchConfiguration('avp_frame_id')
+    launch_mujoco_camera_viewer = LaunchConfiguration('launch_mujoco_camera_viewer')
+    mujoco_camera_viewer_script = LaunchConfiguration('mujoco_camera_viewer_script')
+    mujoco_camera_viewer_left_topic = LaunchConfiguration('mujoco_camera_viewer_left_topic')
+    mujoco_camera_viewer_right_topic = LaunchConfiguration('mujoco_camera_viewer_right_topic')
 
     if not robot_sides:
         raise RuntimeError("robot_side must be 'left', 'right', or 'dual'.")
@@ -138,6 +148,7 @@ def _launch_setup(context, *args, **kwargs):
             output='log',
             arguments=['-d', os.path.join(pkg_ctrl, 'rviz', 'fr3_husky.rviz')],
             parameters=[{'robot_description': robot_description}],
+            condition=IfCondition(launch_rviz),
         ),
         Node(
             package='robot_state_publisher',
@@ -206,6 +217,34 @@ def _launch_setup(context, *args, **kwargs):
             ),
             condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('use_mujoco'), "' == 'true'"])),
         ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                avp_bridge_script,
+                '--ros-args',
+                '-p', ['udp_ip:=', avp_udp_ip],
+                '-p', ['udp_port:=', avp_udp_port],
+                '-p', ['frame_id:=', avp_frame_id],
+            ],
+            name='mac2linux_avp_bridge',
+            output='screen',
+            condition=IfCondition(launch_avp_bridge),
+        ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                mujoco_camera_viewer_script,
+                '--ros-args',
+                '-p', ['left_topic:=', mujoco_camera_viewer_left_topic],
+                '-p', ['right_topic:=', mujoco_camera_viewer_right_topic],
+            ],
+            name='mujoco_split_camera_viewer',
+            output='screen',
+            condition=IfCondition(PythonExpression([
+                "'", LaunchConfiguration('use_mujoco'), "' == 'true' and '",
+                launch_mujoco_camera_viewer, "' == 'true'",
+            ])),
+        ),
     ]
 
     # franka_robot_state_broadcaster: real hardware only (skip for fake or mujoco)
@@ -257,5 +296,31 @@ def generate_launch_description():
         DeclareLaunchArgument('use_mujoco',        default_value='false', description='Use MuJoCo hardware interface'),
         DeclareLaunchArgument('use_fake_hardware', default_value='false', description='Use fake hardware'),
         DeclareLaunchArgument('fake_sensor_commands', default_value='false', description='Fake sensor commands'),
+        DeclareLaunchArgument('launch_rviz',       default_value='false', description='Launch RViz'),
+        DeclareLaunchArgument('launch_avp_bridge', default_value='true', description='Launch AVP UDP-to-ROS bridge'),
+        DeclareLaunchArgument(
+            'avp_bridge_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'handtracking_avp.py']),
+            description='Path to AVP UDP-to-ROS bridge script',
+        ),
+        DeclareLaunchArgument('avp_udp_ip',        default_value='0.0.0.0', description='UDP bind IP for AVP bridge'),
+        DeclareLaunchArgument('avp_udp_port',      default_value='5005', description='UDP bind port for AVP bridge'),
+        DeclareLaunchArgument('avp_frame_id',      default_value='avp_world', description='Frame id used in tracker_pose header'),
+        DeclareLaunchArgument('launch_mujoco_camera_viewer', default_value='true', description='Launch split MuJoCo camera viewer when use_mujoco is true'),
+        DeclareLaunchArgument(
+            'mujoco_camera_viewer_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'mujoco_split_camera_viewer.py']),
+            description='Path to split MuJoCo camera viewer script',
+        ),
+        DeclareLaunchArgument(
+            'mujoco_camera_viewer_left_topic',
+            default_value='/mujoco_ros_hardware/right_d435i/color/image_raw',
+            description='Left split-view image topic',
+        ),
+        DeclareLaunchArgument(
+            'mujoco_camera_viewer_right_topic',
+            default_value='/mujoco_ros_hardware/top_azure/color/image_raw',
+            description='Right split-view image topic',
+        ),
         OpaqueFunction(function=_launch_setup),
     ])

@@ -105,6 +105,23 @@ private:
     double max_angular_vel_ = 1.0;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
 
+    // double smoothing_alpha_ = 1.0;
+    // double max_linear_vel_ = 10.0;
+    // double max_angular_vel_ = 10.0;
+
+    // tracking state
+    bool auto_tracking_started_ = false;
+    std::vector<bool> tracker_pose_valid_;
+    double avp_tracking_enable_delay_ = 5.0;
+
+    Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};
+
+    // startup orientation alignment
+    std::vector<bool> ori_startup_calib_done_;
+    std::vector<int> ori_startup_calib_count_;
+    std::vector<Eigen::Vector4d> ori_startup_calib_sum_;   // quaternion sum in [w x y z]
+    int ori_startup_calib_samples_ = 10;                   // first n hand poses
+
     // action goal data
     int control_mode_;                     // 0: CLIK, 1: OSF, 2:QPIK, 3:QPID
     std::string left_controller_ee_name_;  // EE name for tracking left AVP controller
