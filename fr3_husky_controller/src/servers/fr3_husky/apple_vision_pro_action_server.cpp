@@ -194,19 +194,11 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
 : Base(name, node, model_updater),
   fr3_husky_model_updater_(getFR3HuskyModelUpdater(model_updater, name))
 {
-<<<<<<< Updated upstream
-    // remove
-    tmm_mediapipe_sub_         = node_->create_subscription<geometry_msgs::msg::PoseStamped>("hand_pose", 1, std::bind(&AppleVisionPro::subPoseCallback2, this, std::placeholders::_1));
-
-
-    pose_sub_         = node_->create_subscription<geometry_msgs::msg::PoseArray>("tracker_pose", 1, std::bind(&AppleVisionPro::subPoseCallback, this, std::placeholders::_1));
-=======
     const auto tracker_pose_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
     pose_sub_ = node_->create_subscription<geometry_msgs::msg::PoseArray>(
         "tracker_pose",
         tracker_pose_qos,
         std::bind(&AppleVisionPro::subPoseCallback, this, std::placeholders::_1));
->>>>>>> Stashed changes
     l_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("lhand_gesture", 1, std::bind(&AppleVisionPro::subLGestureCallback, this, std::placeholders::_1));
     r_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("rhand_gesture", 1, std::bind(&AppleVisionPro::subRGestureCallback, this, std::placeholders::_1));
 
