@@ -148,9 +148,6 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         std::mutex heavy_init_mutex_;
         bool heavy_init_done_{false};
         controller_interface::CallbackReturn initialize_heavy_resources();
-        bool post_activate_init_done_{false};
-        bool post_activate_init_running_{false};
-        controller_interface::CallbackReturn finalize_post_activate_init();
 
         // ========================================================================
         // ============================== Parameters ==============================

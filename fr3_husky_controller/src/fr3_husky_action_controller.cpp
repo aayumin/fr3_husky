@@ -224,7 +224,14 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
 
     heavy_init_done_ = false;
 
+    if (initialize_heavy_resources() != CallbackReturn::SUCCESS)
+    {
+        LOGE(get_node(), "Heavy initialization failed during configure.");
+        return CallbackReturn::ERROR;
+    }
+
     return CallbackReturn::SUCCESS;
+
 }
 
 CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
@@ -387,11 +394,11 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
 
 CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
-    if (initialize_heavy_resources() != CallbackReturn::SUCCESS)
-    {
-        LOGE(get_node(), "Heavy initialization failed.");
-        return CallbackReturn::ERROR;
-    }
+    // if (initialize_heavy_resources() != CallbackReturn::SUCCESS)
+    // {
+    //     LOGE(get_node(), "Heavy initialization failed.");
+    //     return CallbackReturn::ERROR;
+    // }
 
     if (!model_updater_)
     {
@@ -556,43 +563,6 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
 
 
 
-    is_halted_ = false;
-
-    play_time_ = get_node()->now().seconds();
-    control_start_time_ = play_time_;
-
-    post_activate_init_done_ = false;
-    post_activate_init_running_ = false;
-
-
-    // model_updater_->updateJointStates();
-    // model_updater_->updateRobotData();
-    // model_updater_->setInitFromCurrent();
-
-
-    return CallbackReturn::SUCCESS;
-}
-
-controller_interface::CallbackReturn FR3HuskyActionController::finalize_post_activate_init()
-{
-    if (!model_updater_)
-    {
-        LOGE(get_node(), "Model updater is not configured.");
-        return CallbackReturn::ERROR;
-    }
-
-    if (post_activate_init_done_)
-    {
-        return CallbackReturn::SUCCESS;
-    }
-
-    if (post_activate_init_running_)
-    {
-        return CallbackReturn::SUCCESS;
-    }
-
-    post_activate_init_running_ = true;
-
     model_updater_->has_hand_ = false;
     for (const auto & ee_name : ee_names_)
     {
@@ -635,7 +605,10 @@ controller_interface::CallbackReturn FR3HuskyActionController::finalize_post_act
 
     active_task_.reset();
 
-    idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
+    if (!idle_control_)
+    {
+        idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
+    }
 
     if (!odometry_publisher_)
     {
@@ -664,12 +637,21 @@ controller_interface::CallbackReturn FR3HuskyActionController::finalize_post_act
     model_updater_->updateRobotData();
     model_updater_->setInitFromCurrent();
 
-    post_activate_init_done_ = true;
-    post_activate_init_running_ = false;
+    is_halted_ = false;
 
-    LOGI(get_node(), "Post-activate initialization done.");
+    play_time_ = get_node()->now().seconds();
+    control_start_time_ = play_time_;
+
+
+
+    // model_updater_->updateJointStates();
+    // model_updater_->updateRobotData();
+    // model_updater_->setInitFromCurrent();
+
+
     return CallbackReturn::SUCCESS;
 }
+
 
 
 
@@ -686,41 +668,12 @@ CallbackReturn FR3HuskyActionController::on_deactivate(const rclcpp_lifecycle::S
     estop_button_pressed_.store(false, std::memory_order_release);
     joy_msg_received_.store(false, std::memory_order_release);
 
-    post_activate_init_done_ = false;
-    post_activate_init_running_ = false;
-
     return CallbackReturn::SUCCESS;
 }
 
 
 controller_interface::return_type FR3HuskyActionController::update(const rclcpp::Time& time, const rclcpp::Duration& period)
 {
-
-    if (!post_activate_init_done_)
-    {
-        const auto ret = finalize_post_activate_init();
-        if (ret != CallbackReturn::SUCCESS)
-        {
-            if (!is_halted_ && model_updater_)
-            {
-                model_updater_->haltCommands();
-                is_halted_ = true;
-            }
-            return controller_interface::return_type::ERROR;
-        }
-
-        if (!post_activate_init_done_)
-        {
-            if (!is_halted_ && model_updater_)
-            {
-                model_updater_->haltCommands();
-                is_halted_ = true;
-            }
-            return controller_interface::return_type::OK;
-        }
-    }
-
-
 
     if (!model_updater_)
     {
