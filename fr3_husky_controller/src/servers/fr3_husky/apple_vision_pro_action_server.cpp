@@ -32,6 +32,10 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
 : Base(name, node, model_updater),
   fr3_husky_model_updater_(getFR3HuskyModelUpdater(model_updater, name))
 {
+    // remove
+    tmm_mediapipe_sub_         = node_->create_subscription<geometry_msgs::msg::PoseStamped>("hand_pose", 1, std::bind(&AppleVisionPro::subPoseCallback2, this, std::placeholders::_1));
+
+
     pose_sub_         = node_->create_subscription<geometry_msgs::msg::PoseArray>("tracker_pose", 1, std::bind(&AppleVisionPro::subPoseCallback, this, std::placeholders::_1));
     l_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("lhand_gesture", 1, std::bind(&AppleVisionPro::subLGestureCallback, this, std::placeholders::_1));
     r_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("rhand_gesture", 1, std::bind(&AppleVisionPro::subRGestureCallback, this, std::placeholders::_1));
@@ -608,6 +612,27 @@ AppleVisionPro::ResultPtr AppleVisionPro::makeResult(StopReason reason)
     result->is_completed = true;
     return result;
 }
+
+
+void AppleVisionPro::subPoseCallback2(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+{   
+
+    Eigen::Vector3d position(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
+    position = dyros_math::lowPassFilter(position, controller_poses_[0].translation(), 0.001, 0.002);
+    Eigen::Quaterniond quaternion(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
+    quaternion.normalize();
+    Eigen::Matrix3d orientation = quaternion.toRotationMatrix();
+    {
+        std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
+        controller_poses_[0].translation() = position;
+        controller_poses_[0].linear() = orientation;
+    }
+
+
+}
+
+
+
 
 void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
 {   

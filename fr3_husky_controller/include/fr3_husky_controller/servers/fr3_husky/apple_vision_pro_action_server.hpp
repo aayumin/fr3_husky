@@ -16,6 +16,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include <std_msgs/msg/int32_multi_array.hpp>
 
 #define NUM_TRACKERS    3 // left, right, head
@@ -58,6 +59,7 @@ private:
     void onStop(StopReason reason) override;
     ResultPtr makeResult(StopReason reason) override;
 
+
 private:
     FR3HuskyModelUpdater& fr3_husky_model_updater_;
 
@@ -66,6 +68,11 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr  pose_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr l_gesture_state_sub_; // off: 0 | on: 1, 
     rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr r_gesture_state_sub_; // off: 0 | on: 1, 
+
+    // remove
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr tmm_mediapipe_sub_;
+    void subPoseCallback2(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+
 
     void subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg);
     void subLGestureCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
