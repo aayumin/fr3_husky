@@ -1,10 +1,10 @@
 #include <fr3_husky_controller/servers/fr3_husky/apple_vision_pro_action_server.hpp>
-
 #include <mujoco/mujoco.h>
 
 #include <cmath>
 #include <mutex>
 #include <stdexcept>
+#include <vector>
 
 namespace mujoco_ros_hardware
 {
@@ -67,20 +67,6 @@ Eigen::Matrix3d getEEFfromHandRotationMap()
     return R;
 }
 
-// Eigen::Matrix3d getHandToEEF()
-// {
-//     Eigen::Matrix3d R;
-
-//     // columns = hand axes expressed in eef frame
-//     // hand x → eef ?   (we define mapping)
-    
-//     R.col(0) = Eigen::Vector3d(0, 0, -1);  // hand +x → eef -z
-//     R.col(1) = Eigen::Vector3d(0, 1,  0);  // hand +y → eef +y
-//     R.col(2) = Eigen::Vector3d(1, 0,  0);  // hand +z → eef +x
-
-//     return R;
-// }
-
 Eigen::Quaterniond averageQuaternionWXYZ(const Eigen::Vector4d& qsum)
 {
     Eigen::Vector4d q = qsum;
@@ -95,9 +81,13 @@ Eigen::Quaterniond averageQuaternionWXYZ(const Eigen::Vector4d& qsum)
 // ==================== MUJOCO OBJECT WELD ATTACH / DETACH ====================
 // Predefined in fr3_husky_description/mjcf/dual_fr3_husky.xml.xacro:
 //   weld_blue_right_tcp: right_fr3_hand_tcp <-> blue_cylinder_body
+//   weld_blue_left_tcp:  left_fr3_hand_tcp  <-> blue_cylinder_body
 // This directly toggles MuJoCo's equality constraint in the shared simulation.
 // ============================================================================
-bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger, bool active)
+bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger,
+                                       bool active,
+                                       const std::vector<bool>& is_gripper_mode_on,
+                                       int controller_idx)
 {
     auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
     if (!world.isSceneLoaded())
@@ -116,8 +106,25 @@ bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger, bool active
         return false;
     }
 
-    constexpr const char* kWeldName = "weld_blue_right_tcp";
-    constexpr const char* kParentBodyName = "right_fr3_hand_tcp";
+    const bool is_right_controller = controller_idx == IDX_RIGHT_CON;
+    const bool is_left_controller = controller_idx == IDX_LEFT_CON;
+    if (!is_right_controller && !is_left_controller)
+    {
+        RCLCPP_WARN(logger, "[AVP object weld] Invalid controller index: %d", controller_idx);
+        return false;
+    }
+
+    if (active && (controller_idx >= static_cast<int>(is_gripper_mode_on.size()) ||
+                   !is_gripper_mode_on[controller_idx]))
+    {
+        RCLCPP_WARN(logger,
+                    "[AVP object weld] Cannot attach; gripper mode is off for controller index %d.",
+                    controller_idx);
+        return false;
+    }
+
+    const char* const kWeldName = is_right_controller ? "weld_blue_right_tcp" : "weld_blue_left_tcp";
+    const char* const kParentBodyName = is_right_controller ? "right_fr3_hand_tcp" : "left_fr3_hand_tcp";
     constexpr const char* kChildBodyName = "blue_cylinder_body";
     constexpr const char* kChildFreeJointName = "blue_cylinder_free";
 
@@ -322,11 +329,6 @@ void AppleVisionPro::onStart()
     auto_tracking_started_ = false;
     tracker_pose_valid_.assign(NUM_TRACKERS, false);
 
-    // startup orientation alignement calibration state
-    ori_startup_calib_done_.assign(NUM_CONTROLLERS, false);
-    ori_startup_calib_count_.assign(NUM_CONTROLLERS, 0);
-    ori_startup_calib_sum_.assign(NUM_CONTROLLERS, Eigen::Vector4d::Zero());
-
     ee_data_.clear();
     waiting_for_jtc_.store(false, std::memory_order_relaxed);
     control_start_time_ = -1.0; // sentinel: set on first compute() call
@@ -441,10 +443,18 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] lhand trigger released → GripperGrasp('%s')", name_.c_str(), robot_name.c_str());
                         fr3_husky_model_updater_.GripperGrasp(robot_name, 0.0, 0.1, 100.0);
+
+                        // Attach blue_cylinder_body to left_fr3_hand_tcp while the left gripper is closed.
+                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_RIGHT_CON);
+                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), true, is_gripper_mode_on_, IDX_LEFT_CON);
                     }
                     else
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] lhand trigger released → GripperOpen('%s')", name_.c_str(), robot_name.c_str());
+
+                        // Detach blue_cylinder_body from left_fr3_hand_tcp before opening the left gripper.
+                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_LEFT_CON);
+
                         fr3_husky_model_updater_.GripperOpen(robot_name, 0.1);
                     }
                 }
@@ -465,21 +475,16 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         RCLCPP_INFO(node_->get_logger(), "[%s] rhand trigger released → GripperGrasp('%s')", name_.c_str(), robot_name.c_str());
                         fr3_husky_model_updater_.GripperGrasp(robot_name, 0.0, 0.1, 100.0);
 
-                        // ==================== RIGHT GRIPPER OBJECT WELD ATTACH ====================
-                        // When the RIGHT gripper closes, attach blue_cylinder_body to right_fr3_hand_tcp
-                        // by enabling the predefined MuJoCo weld: weld_blue_right_tcp.
-                        // ===========================================================================
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), true);
+                        // Attach blue_cylinder_body to right_fr3_hand_tcp while the right gripper is closed.
+                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_LEFT_CON);
+                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), true, is_gripper_mode_on_, IDX_RIGHT_CON);
                     }
                     else
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] rhand trigger released → GripperOpen('%s')", name_.c_str(), robot_name.c_str());
 
-                        // ==================== RIGHT GRIPPER OBJECT WELD DETACH ====================
-                        // When the RIGHT gripper opens, detach blue_cylinder_body from right_fr3_hand_tcp
-                        // by disabling the predefined MuJoCo weld: weld_blue_right_tcp.
-                        // ===========================================================================
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false);
+                        // Detach blue_cylinder_body from right_fr3_hand_tcp before opening the right gripper.
+                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_RIGHT_CON);
 
                         fr3_husky_model_updater_.GripperOpen(robot_name, 0.1);
                     }
@@ -491,179 +496,57 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     // Manipulator control
     {   
 
-        // // Check real-time hand tracking mode
-        // for(size_t i = 0; i < NUM_CONTROLLERS; ++i)
-        // {
-        //     // tracking mode change
-        //     if(!is_tracking_mode_on_[i] && gesture_states_local[i][IDX_PINCH_SNAP_UP_GESTURE]) // activate tracking mode
-        //     {
-        //         RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
-        //         is_tracking_mode_on_[i] = true;
-        //         is_first_target_left_ = true;
-        //         is_first_target_right_ = true;
-    
-        //         controller_poses_init_[i] = controller_poses_local[i];
-        //         if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
-        //         else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
-
-        //     }
-        //     else if(is_tracking_mode_on_[i] && gesture_states_local[i][IDX_PINCH_SNAP_DOWN_GESTURE]) // deactivate tracking mode
-        //     {
-        //         RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode deactivated!", name_.c_str(), (i==0)?"Left":"Right");
-        //         is_tracking_mode_on_[i] = false;
-    
-        //         controller_poses_init_[i] = controller_poses_local[i];
-        //         if(i == IDX_LEFT_CON && !left_controller_ee_name_.empty())        ee_data_[left_controller_ee_name_].setInit();
-        //         else if(i == IDX_RIGHT_CON && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
-        //     }
-            
-        //     // temporarily deactivate tracking when pinch motion
-        //     if(!prev_gesture_states_[i][IDX_PINCH_GESTURE] && gesture_states_local[i][IDX_PINCH_GESTURE]) // deactivate tracking mode
-        //     {
-        //         RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode deactivated!", name_.c_str(), (i==0)?"Left":"Right");
-        //         is_tracking_mode_on_[i] = false;
-    
-        //         controller_poses_init_[i] = controller_poses_local[i];
-        //         if(i == IDX_LEFT_CON && !left_controller_ee_name_.empty())        ee_data_[left_controller_ee_name_].setInit();
-        //         else if(i == IDX_RIGHT_CON && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
-        //     }
-        //     else if(prev_gesture_states_[i][IDX_PINCH_GESTURE] && !gesture_states_local[i][IDX_PINCH_GESTURE]) // activate tracking mode
-        //     {
-        //         RCLCPP_INFO(node_->get_logger(), "[%s] %s Tracking Mode activated!", name_.c_str(), (i==0)?"Left":"Right");
-        //         is_tracking_mode_on_[i] = true;
-        //         is_first_target_left_ = true;
-        //         is_first_target_right_ = true;
-    
-        //         controller_poses_init_[i] = controller_poses_local[i];
-        //         if(i == 0 && !left_controller_ee_name_.empty())       ee_data_[left_controller_ee_name_].setInit();
-        //         else if(i == 1 && !right_controller_ee_name_.empty()) ee_data_[right_controller_ee_name_].setInit();
-        //     }
-        // }
-
-        // Auto tracking ON exactly once, 5 sec after server start,
-        // only when left/right/head poses are all valid.
         if (!auto_tracking_started_)
         {
-            const bool all_tracker_valid =
+            const bool head_tracker_valid =
                 tracker_pose_valid_.size() == NUM_TRACKERS &&
-                // tracker_pose_valid_[IDX_LEFT_CON] &&
-                tracker_pose_valid_[IDX_RIGHT_CON] &&
                 tracker_pose_valid_[IDX_HEAD_CON];
 
-            if (all_tracker_valid &&
+            const bool left_tracker_valid =
+                head_tracker_valid && tracker_pose_valid_[IDX_LEFT_CON];
+
+            const bool right_tracker_valid =
+                head_tracker_valid && tracker_pose_valid_[IDX_RIGHT_CON];
+
+            if ((left_tracker_valid || right_tracker_valid) &&
                 control_start_time_ >= 0.0 &&
                 (time.seconds() - control_start_time_) >= avp_tracking_enable_delay_)
             {
                 RCLCPP_INFO(node_->get_logger(),
-                            "[%s] Auto tracking ON after %.2f sec (all tracker poses valid).",
+                            "[%s] Auto tracking ON after %.2f sec. left=%s right=%s",
                             name_.c_str(),
-                            avp_tracking_enable_delay_);
+                            avp_tracking_enable_delay_,
+                            left_tracker_valid ? "true" : "false",
+                            right_tracker_valid ? "true" : "false");
 
-                for (size_t i = 0; i < NUM_CONTROLLERS; ++i)
-                {
-                    // is_tracking_mode_on_[i] = true;
-
-                    // controller_poses_init_[i] = controller_poses_local[i];
-
-                    // 오른손만 tracking ON
-                    is_tracking_mode_on_[IDX_RIGHT_CON] = true;
-                    controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
-                    // head는 기준 필요하니까 유지
-                    controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
-
-                    if (i == IDX_LEFT_CON && !left_controller_ee_name_.empty())
-                    {
-                        ee_data_[left_controller_ee_name_].setInit();
-                    }
-                    else if (i == IDX_RIGHT_CON && !right_controller_ee_name_.empty())
-                    {
-                        ee_data_[right_controller_ee_name_].setInit();
-                    }
-                }
+                // Head init is common
                 controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
-                world_from_base_init_ = fr3_husky_model_updater_.robot_data_->getPose("base_link");
 
-                is_first_target_left_ = true;
-                is_first_target_right_ = true;
+                // Left hand / left EEF
+                is_tracking_mode_on_[IDX_LEFT_CON] = left_tracker_valid;
+                if (left_tracker_valid && !left_controller_ee_name_.empty())
+                {
+                    controller_poses_init_[IDX_LEFT_CON] = controller_poses_local[IDX_LEFT_CON];
+                    ee_data_[left_controller_ee_name_].setInit();
+                    is_first_target_left_ = true;
+                }
+
+                // Right hand / right EEF
+                is_tracking_mode_on_[IDX_RIGHT_CON] = right_tracker_valid;
+                if (right_tracker_valid && !right_controller_ee_name_.empty())
+                {
+                    controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
+                    ee_data_[right_controller_ee_name_].setInit();
+                    is_first_target_right_ = true;
+                }
+
+                // world_from_base_init_ = fr3_husky_model_updater_.robot_data_->getPose("base_link");
                 auto_tracking_started_ = true;
             }
         }
         
-        auto runStartupOrientationCalibration =
-            [&](size_t idx, const std::string& ee_name) -> bool
-        {
-            if (!move_ori_) return true;
-            if (ori_startup_calib_done_[idx]) return true;
-
-            // Current hand orientation
-            Eigen::Quaterniond q_hand_cur(controller_poses_local[idx].linear());
-            q_hand_cur.normalize();
-
-            Eigen::Vector4d qv(
-                q_hand_cur.w(),
-                q_hand_cur.x(),
-                q_hand_cur.y(),
-                q_hand_cur.z()
-            );
-
-            // Hemisphere correction to avoid +q / -q cancellation
-            if (ori_startup_calib_count_[idx] > 0)
-            {
-                const Eigen::Vector4d& ref = ori_startup_calib_sum_[idx];
-                if (ref.norm() > 1e-12 && ref.dot(qv) < 0.0)
-                {
-                    qv = -qv;
-                }
-            }
-
-            ori_startup_calib_sum_[idx] += qv;
-            ori_startup_calib_count_[idx] += 1;
-
-            // Average hand orientation from first n samples
-            const Eigen::Quaterniond q_hand_avg =
-                averageQuaternionWXYZ(ori_startup_calib_sum_[idx]);
-            const Eigen::Matrix3d R_hand_avg = q_hand_avg.toRotationMatrix();
-
-            const Eigen::Matrix3d R_eef_from_hand = getEEFfromHandRotationMap();
-            const Eigen::Matrix3d R_hand_from_eef = R_eef_from_hand.transpose();
-            const Eigen::Matrix3d R_world_from_avp = getBaseFromAVPPositionMap();
-
-            const Eigen::Matrix3d R_world_from_eef_aligned =
-                R_world_from_avp * R_hand_avg * R_hand_from_eef;
-
-            // During calibration phase:
-            // keep current eef position, only rotate eef toward aligned hand orientation
-            ee_data_[ee_name].x_init.translation() = ee_data_[ee_name].x.translation();
-            ee_data_[ee_name].x_init.linear() = R_world_from_eef_aligned;
-            ee_data_[ee_name].x_desired = ee_data_[ee_name].x_init;
-
-            if (ori_startup_calib_count_[idx] >= ori_startup_calib_samples_)
-            {
-                // After first n hand poses, define teleop initial hand pose from averaged hand orientation
-                controller_poses_init_[idx].translation() = controller_poses_local[idx].translation();
-                controller_poses_init_[idx].linear() = R_hand_avg;
-
-                // Define teleop initial eef pose from aligned orientation
-                ee_data_[ee_name].x_init.translation() = ee_data_[ee_name].x.translation();
-                ee_data_[ee_name].x_init.linear() = R_world_from_eef_aligned;
-                ee_data_[ee_name].x_desired = ee_data_[ee_name].x_init;
-
-                ori_startup_calib_done_[idx] = true;
-
-                if (idx == IDX_LEFT_CON)  is_first_target_left_ = true;
-                if (idx == IDX_RIGHT_CON) is_first_target_right_ = true;
-
-                RCLCPP_INFO(node_->get_logger(),
-                            "[%s] %s startup orientation calibration done with %d samples.",
-                            name_.c_str(),
-                            (idx == IDX_LEFT_CON ? "LEFT" : "RIGHT"),
-                            ori_startup_calib_samples_);
-            }
-
-            return ori_startup_calib_done_[idx];
-        };
         
-        if(false && !left_controller_ee_name_.empty()) // left AVP controller
+        if(!left_controller_ee_name_.empty()) // left AVP controller
         {
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
             Eigen::Vector6d target_vel;
@@ -672,55 +555,14 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
             if (is_tracking_mode_on_[IDX_LEFT_CON])
             {
-                if (!runStartupOrientationCalibration(IDX_LEFT_CON, left_controller_ee_name_))
+                // if (!runStartupOrientationCalibration(IDX_LEFT_CON, left_controller_ee_name_))
+                if (false)
                 {
                     target_pose_diff.setIdentity();
                 }
                 else
                 {
                     const Eigen::Matrix3d R_base_from_avp = getBaseFromAVPPositionMap();
-                    const Eigen::Matrix3d R_eef_from_hand = getEEFfromHandRotationMap();
-
-                    // ---------------------------
-                    // POSITION CALIBRATION (WORLD-CENTRIC)
-                    // Use raw world hand delta only
-                    // ---------------------------
-                    // const Eigen::Vector3d delta_world_raw =
-                    //     controller_poses_local[IDX_LEFT_CON].translation() -
-                    //     controller_poses_init_[IDX_LEFT_CON].translation();
-
-                    // // Express world delta in base_init frame
-                    // Eigen::Vector3d delta_in_base_init =
-                    //     world_from_base_init_.linear().transpose() * delta_world_raw;
-
-                    // // Deadband
-                    // const double POS_EPS = 0.01;  // 1 cm
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (std::abs(delta_in_base_init(k)) < POS_EPS)
-                    //         delta_in_base_init(k) = 0.0;
-                    // }
-
-                    // // Clamp
-                    // const double MAX_POS_DELTA = 0.05;  // 5 cm
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (delta_in_base_init(k) >  MAX_POS_DELTA) delta_in_base_init(k) =  MAX_POS_DELTA;
-                    //     if (delta_in_base_init(k) < -MAX_POS_DELTA) delta_in_base_init(k) = -MAX_POS_DELTA;
-                    // }
-
-                    // // Apply fixed AVP/world -> base mapping
-                    // const Eigen::Vector3d delta_base =
-                    //     R_base_from_avp * delta_in_base_init;
-
-                    // // Convert base_init delta back to world
-                    // const Eigen::Vector3d delta_world =
-                    //     world_from_base_init_.linear() * delta_base;
-
-                    // target_pose_diff.translation() =
-                    //     controller_pos_multiplier_ *
-                    //     ee_data_[left_controller_ee_name_].x_init.linear().transpose() *
-                    //     delta_world;
 
                     // ---------------------------
                     // POSITION CALIBRATION (TRUE HEAD-RELATIVE)
@@ -771,26 +613,37 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     const Eigen::Vector3d delta_base =
                         R_base_from_avp * delta_avp;
 
+                    // Get current base link pose in world frame
+                    world_from_base_cur_ = fr3_husky_model_updater_.robot_data_->getPose("base_link");
+
                     // Convert base delta to world using base pose at tracking start
                     const Eigen::Vector3d delta_world =
-                        world_from_base_init_.linear() * delta_base;
+                        world_from_base_cur_.linear() * delta_base;
 
                     target_pose_diff.translation() =
                         controller_pos_multiplier_ *
                         ee_data_[left_controller_ee_name_].x_init.linear().transpose() *
                         delta_world;
+
                     // ---------------------------
                     // ORIENTATION CALIBRATION
+                    // Hand AVP-axis delta -> EEF WORLD(=base_init)-axis delta
                     // ---------------------------
                     target_pose_diff.linear().setIdentity();
                     if (move_ori_)
                     {
-                        const Eigen::Matrix3d R_hand_delta =
-                            controller_poses_init_[IDX_LEFT_CON].linear().transpose() *
+                        // Hand orientations are expressed in AVP frame, NOT world frame
+                        const Eigen::Matrix3d R_hand_init_avp =
+                            controller_poses_init_[IDX_LEFT_CON].linear();
+                        const Eigen::Matrix3d R_hand_cur_avp =
                             controller_poses_local[IDX_LEFT_CON].linear();
 
-                        Eigen::AngleAxisd aa_hand(R_hand_delta);
-                        Eigen::Matrix3d R_hand_delta_scaled = Eigen::Matrix3d::Identity();
+                        // Spatial delta in AVP frame
+                        const Eigen::Matrix3d R_hand_delta_avp =
+                            R_hand_cur_avp * R_hand_init_avp.transpose();
+
+                        Eigen::AngleAxisd aa_hand(R_hand_delta_avp);
+                        Eigen::Matrix3d R_hand_delta_avp_scaled = Eigen::Matrix3d::Identity();
 
                         double angle = aa_hand.angle();
 
@@ -806,19 +659,36 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                         if (std::abs(angle) > 1e-10)
                         {
-                            R_hand_delta_scaled =
+                            R_hand_delta_avp_scaled =
                                 Eigen::AngleAxisd(
                                     controller_ori_multiplier_ * angle,
                                     aa_hand.axis()
                                 ).toRotationMatrix();
                         }
 
-                        const Eigen::Matrix3d R_eef_delta =
-                            R_eef_from_hand * R_hand_delta_scaled * R_eef_from_hand.transpose();
+                        // Convert AVP-axis delta to base_init-axis delta
+                        const Eigen::Matrix3d R_base_from_eef_delta =
+                            R_base_from_avp *
+                            R_hand_delta_avp_scaled *
+                            R_base_from_avp.transpose();
 
-                        target_pose_diff.linear() = R_eef_delta;
+                        // Convert base_init-axis delta to world-axis delta
+                        const Eigen::Matrix3d R_world_from_eef_delta =
+                            world_from_base_cur_.linear() *
+                            R_base_from_eef_delta *
+                            world_from_base_cur_.linear().transpose();
+                        
+                        // Apply same world/base-axis delta to initial EEF orientation
+                        const Eigen::Matrix3d R_world_from_eef_des =
+                            R_world_from_eef_delta * ee_data_[left_controller_ee_name_].x_init.linear();
+
+                        // raw_target = x_init * target_pose_diff
+                        target_pose_diff.linear() =
+                            ee_data_[left_controller_ee_name_].x_init.linear().transpose() *
+                            R_world_from_eef_des;
                     }
-                                    // smoothed target pose
+                
+                // smoothed target pose
                 Eigen::Affine3d raw_target = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
                 double dt = fr3_husky_model_updater_.dt_;
                 if (is_first_target_left_)
@@ -829,12 +699,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
                 prev_target_left_ = smooth_target;
                 ee_data_[left_controller_ee_name_].x_desired = smooth_target;
-                // prev_target_left_ = raw_target;
-                // ee_data_[left_controller_ee_name_].x_desired = raw_target;
                 ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
                 
-                // ee_data_[left_controller_ee_name_].x_desired = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
-                // ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
                 }
             }
         }
@@ -848,49 +714,13 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
             if (is_tracking_mode_on_[IDX_RIGHT_CON])
             {
-                if (!runStartupOrientationCalibration(IDX_RIGHT_CON, right_controller_ee_name_))
+                if (false)
                 {
                     target_pose_diff.setIdentity();
                 }
                 else
                 {
                     const Eigen::Matrix3d R_base_from_avp = getBaseFromAVPPositionMap();
-                    const Eigen::Matrix3d R_eef_from_hand = getEEFfromHandRotationMap();
-
-                    // ---------------------------
-                    // POSITION CALIBRATION (WORLD-CENTRIC)
-                    // ---------------------------
-                    // const Eigen::Vector3d delta_world_raw =
-                    //     controller_poses_local[IDX_RIGHT_CON].translation() -
-                    //     controller_poses_init_[IDX_RIGHT_CON].translation();
-
-                    // Eigen::Vector3d delta_in_base_init =
-                    //     world_from_base_init_.linear().transpose() * delta_world_raw;
-
-                    // const double POS_EPS = 0.01;
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (std::abs(delta_in_base_init(k)) < POS_EPS)
-                    //         delta_in_base_init(k) = 0.0;
-                    // }
-
-                    // const double MAX_POS_DELTA = 0.05;
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (delta_in_base_init(k) >  MAX_POS_DELTA) delta_in_base_init(k) =  MAX_POS_DELTA;
-                    //     if (delta_in_base_init(k) < -MAX_POS_DELTA) delta_in_base_init(k) = -MAX_POS_DELTA;
-                    // }
-
-                    // const Eigen::Vector3d delta_base =
-                    //     R_base_from_avp * delta_in_base_init;
-
-                    // const Eigen::Vector3d delta_world =
-                    //     world_from_base_init_.linear() * delta_base;
-
-                    // target_pose_diff.translation() =
-                    //     controller_pos_multiplier_ *
-                    //     ee_data_[right_controller_ee_name_].x_init.linear().transpose() *
-                    //     delta_world;
 
                     // ---------------------------
                     // POSITION CALIBRATION (TRUE HEAD-RELATIVE)
@@ -937,58 +767,82 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                     const Eigen::Vector3d delta_base =
                         R_base_from_avp * delta_avp;
+                    
+                    // Get current base link pose in world frame
+                    world_from_base_cur_ = fr3_husky_model_updater_.robot_data_->getPose("base_link");
 
                     const Eigen::Vector3d delta_world =
-                        world_from_base_init_.linear() * delta_base;
+                        world_from_base_cur_.linear() * delta_base;
 
                     target_pose_diff.translation() =
                         controller_pos_multiplier_ *
                         ee_data_[right_controller_ee_name_].x_init.linear().transpose() *
                         delta_world;
+                        
                     // ---------------------------
                     // ORIENTATION CALIBRATION
+                    // Hand AVP-axis delta -> EEF WORLD(=base_init)-axis delta
                     // ---------------------------
                     target_pose_diff.linear().setIdentity();
                     if (move_ori_)
                     {
-                        const Eigen::Matrix3d R_hand_delta =
-                            controller_poses_init_[IDX_RIGHT_CON].linear().transpose() *
+                        // Hand orientations are expressed in AVP frame, NOT world frame
+                        const Eigen::Matrix3d R_hand_init_avp =
+                            controller_poses_init_[IDX_RIGHT_CON].linear();
+                        const Eigen::Matrix3d R_hand_cur_avp =
                             controller_poses_local[IDX_RIGHT_CON].linear();
 
-                        Eigen::AngleAxisd aa_hand(R_hand_delta);
-                        Eigen::Matrix3d R_hand_delta_scaled = Eigen::Matrix3d::Identity();
+                        // Spatial delta in AVP frame
+                        const Eigen::Matrix3d R_hand_delta_avp =
+                            R_hand_cur_avp * R_hand_init_avp.transpose();
+
+                        Eigen::AngleAxisd aa_hand(R_hand_delta_avp);
+                        Eigen::Matrix3d R_hand_delta_avp_scaled = Eigen::Matrix3d::Identity();
 
                         double angle = aa_hand.angle();
 
-                        const double ROT_EPS = 0.05;
+                        const double ROT_EPS = 0.05;   // ~3 deg
                         if (std::abs(angle) < ROT_EPS)
                         {
                             angle = 0.0;
                         }
 
-                        const double MAX_ROT_DELTA = 0.60;
+                        const double MAX_ROT_DELTA = 0.60;  // ~34 deg
                         if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
                         if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;
 
                         if (std::abs(angle) > 1e-10)
                         {
-                            R_hand_delta_scaled =
+                            R_hand_delta_avp_scaled =
                                 Eigen::AngleAxisd(
                                     controller_ori_multiplier_ * angle,
                                     aa_hand.axis()
                                 ).toRotationMatrix();
                         }
 
-                        const Eigen::Matrix3d R_eef_delta =
-                            R_eef_from_hand * R_hand_delta_scaled * R_eef_from_hand.transpose();
 
-                        target_pose_diff.linear() = R_eef_delta;
+                        // Convert AVP-axis delta to base_init-axis delta
+                        const Eigen::Matrix3d R_base_from_eef_delta =
+                            R_base_from_avp *
+                            R_hand_delta_avp_scaled *
+                            R_base_from_avp.transpose();
+
+                        // Convert base_init-axis delta to world-axis delta
+                        const Eigen::Matrix3d R_world_from_eef_delta =
+                            world_from_base_cur_.linear() *
+                            R_base_from_eef_delta *
+                            world_from_base_cur_.linear().transpose();
+                        
+                        // Apply same world/base-axis delta to initial EEF orientation
+                        const Eigen::Matrix3d R_world_from_eef_des =
+                            R_world_from_eef_delta * ee_data_[right_controller_ee_name_].x_init.linear();
+
+                        // raw_target = x_init * target_pose_diff
+                        target_pose_diff.linear() =
+                            ee_data_[right_controller_ee_name_].x_init.linear().transpose() *
+                            R_world_from_eef_des;
                     }
-                }
-        
-                // ee_data_[right_controller_ee_name_].x_desired = ee_data_[right_controller_ee_name_].x_init * target_pose_diff;
-                // ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
-                
+                }                
 
                 // smoothed target pose
                 Eigen::Affine3d raw_target = ee_data_[right_controller_ee_name_].x_init * target_pose_diff;
@@ -1001,8 +855,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
                 prev_target_right_ = smooth_target;
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
-                // prev_target_right_ = raw_target;
-                // ee_data_[right_controller_ee_name_].x_desired = raw_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
                 }
             }

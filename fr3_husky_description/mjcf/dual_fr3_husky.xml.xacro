@@ -245,6 +245,8 @@
     <equality>
         <weld name="weld_blue_right_tcp" body1="right_fr3_hand_tcp" body2="blue_cylinder_body"
               active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
+        <weld name="weld_blue_left_tcp" body1="left_fr3_hand_tcp" body2="blue_cylinder_body"
+              active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
     </equality>
 
     <!-- Wheel actuators -->

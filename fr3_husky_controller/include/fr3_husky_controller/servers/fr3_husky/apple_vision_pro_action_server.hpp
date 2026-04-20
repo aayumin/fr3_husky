@@ -115,6 +115,7 @@ private:
     double avp_tracking_enable_delay_ = 5.0;
 
     Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};
+    Eigen::Affine3d world_from_base_cur_{Eigen::Affine3d::Identity()};
 
     // startup orientation alignment
     std::vector<bool> ori_startup_calib_done_;

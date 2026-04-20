@@ -29,7 +29,7 @@ class AppleVisionProClient(Node):
         goal.right_controller_ee_name = 'right_fr3_hand_tcp'
         # goal.left_controller_ee_name = 'left_fr3_link8'
         # goal.right_controller_ee_name = 'right_fr3_link8'
-        goal.move_orientation = False
+        goal.move_orientation = True
         goal.controller_pos_multiplier = 1.0
         goal.controller_ori_multiplier = 1.0
 
