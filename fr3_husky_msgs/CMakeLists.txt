@@ -13,6 +13,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "action/ViveTracker.action"
     "action/MobileMove.action"
     "action/AppleVisionPro.action"
+    "action/GripperCommand.action"
 )
 
 
