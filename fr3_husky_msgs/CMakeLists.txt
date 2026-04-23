@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "action/MobileMove.action"
     "action/AppleVisionPro.action"
     "action/GripperCommand.action"
+    "action/HuskyPedal.action"
 )
 
 

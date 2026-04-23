@@ -1,0 +1,7 @@
+# Goal: enable/disable Husky cmd_vel subscription
+bool enable
+---
+# Result
+bool is_completed
+---
+# Feedback

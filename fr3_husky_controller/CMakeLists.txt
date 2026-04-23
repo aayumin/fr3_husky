@@ -130,6 +130,7 @@ add_library(${PROJECT_NAME} SHARED
     src/servers/fr3/vive_tracker_action_server.cpp
     src/servers/fr3_husky/vive_tracker_action_server.cpp
     src/servers/fr3_husky/husky_move_action_server.cpp
+    src/servers/fr3_husky/husky_pedal_action_server.cpp
     src/servers/fr3_husky/apple_vision_pro_action_server.cpp
 )
 

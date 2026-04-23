@@ -56,6 +56,7 @@ def _launch_setup(context, *args, **kwargs):
     launch_rviz      = LaunchConfiguration('launch_rviz').perform(context)
     namespace         = LaunchConfiguration('namespace').perform(context)
     controller_name   = LaunchConfiguration('controller_name').perform(context)
+    joy_dev           = LaunchConfiguration('joy_dev')
     launch_avp_bridge = LaunchConfiguration('launch_avp_bridge')
     avp_bridge_script = LaunchConfiguration('avp_bridge_script')
     avp_udp_ip        = LaunchConfiguration('avp_udp_ip')
@@ -192,22 +193,22 @@ def _launch_setup(context, *args, **kwargs):
             arguments=[main_controller, '--controller-manager-timeout', '60'],
             output='screen',
         ),
-        # joy_node without namespace → publishes /joy (required by controller e-stop)
+        # joy_linux without namespace → publishes /joy (required by controller e-stop)
         Node(
-            package='joy',
-            executable='joy_node',
+            package='joy_linux',
+            executable='joy_linux_node',
             name='joy_node',
             output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+            parameters=[{'dev': joy_dev}],
         ),
-        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_node above
+        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_linux node above
         Node(
             namespace='joy_teleop',
             package='teleop_twist_joy',
             executable='teleop_node',
             name='teleop_twist_joy_node',
             output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_ps4.yaml'])],
             remappings=[('joy', '/joy')],
         ),
         # husky_control (robot_localization): real hardware only
@@ -292,6 +293,7 @@ def generate_launch_description():
         DeclareLaunchArgument('controller_name',   default_value='test_fr3_husky_controller', description='Base controller name (prefixed with left_/right_/dual_)'),
         DeclareLaunchArgument('robot_side',        default_value='left',  description="Robot side: left, right, or dual"),
         DeclareLaunchArgument('namespace',         default_value='',      description='Namespace for the robot'),
+        DeclareLaunchArgument('joy_dev',           default_value='/dev/input/js0', description='Joystick device for joy_linux'),
         DeclareLaunchArgument('load_gripper',      default_value='true',  description='Load gripper (true/false)'),
         DeclareLaunchArgument('use_mujoco',        default_value='false', description='Use MuJoCo hardware interface'),
         DeclareLaunchArgument('use_fake_hardware', default_value='false', description='Use fake hardware'),

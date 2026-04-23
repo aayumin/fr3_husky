@@ -63,6 +63,7 @@ def _launch_setup(context, *args, **kwargs):
     use_fake_hardware    = LaunchConfiguration('use_fake_hardware').perform(context)
     fake_sensor_commands = LaunchConfiguration('fake_sensor_commands').perform(context)
     namespace            = LaunchConfiguration('namespace').perform(context)
+    joy_dev              = LaunchConfiguration('joy_dev')
     launch_move_group    = LaunchConfiguration('launch_move_group').perform(context)
 
     if not robot_sides:
@@ -198,15 +199,15 @@ def _launch_setup(context, *args, **kwargs):
             remappings=[('/cmd_vel_out', f'/{main_controller}/cmd_vel_unstamped')],
             parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'twist_mux.yaml'])],
         ),
-        # joy_node without namespace → publishes /joy (required by controller e-stop)
+        # joy_linux without namespace → publishes /joy (required by controller e-stop)
         Node(
-            package='joy',
-            executable='joy_node',
+            package='joy_linux',
+            executable='joy_linux_node',
             name='joy_node',
             output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+            parameters=[{'dev': joy_dev}],
         ),
-        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_node above
+        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_linux node above
         Node(
             namespace='joy_teleop',
             package='teleop_twist_joy',
@@ -350,6 +351,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot_side',        default_value='left',  description="Robot side: left, right, or dual"),
         DeclareLaunchArgument('namespace',         default_value='',      description='Namespace for the robot'),
+        DeclareLaunchArgument('joy_dev',           default_value='/dev/input/js0', description='Joystick device for joy_linux'),
         DeclareLaunchArgument('load_gripper',      default_value='true',  description='Load gripper (true/false)'),
         DeclareLaunchArgument('use_mujoco',        default_value='false', description='Use MuJoCo hardware interface'),
         DeclareLaunchArgument('use_fake_hardware', default_value='false', description='Use fake hardware'),

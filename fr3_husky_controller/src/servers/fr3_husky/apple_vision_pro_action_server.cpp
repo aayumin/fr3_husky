@@ -983,7 +983,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 break;
         }
 
-        fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_, Eigen::Vector2d::Zero());  // robot_controller automatically add gravity force
+        fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_,
+            fr3_husky_model_updater_.wheel_vel_desired_);  // robot_controller automatically add gravity force
     
         auto fb = std::make_shared<ActionT::Feedback>();
         fb->is_qp_solved = is_qp_solved;

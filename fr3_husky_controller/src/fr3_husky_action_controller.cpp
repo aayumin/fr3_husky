@@ -778,11 +778,25 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         s->update(time, period);
     }
 
+    bool any_controller_active = false;
+    for (const auto& s : controller_servers_)
+    {
+        if (s->isActive())
+        {
+            any_controller_active = true;
+            break;
+        }
+    }
+
     // 4. active task 실행 or idle
     if (active_task_)
     {
         if (idle_control_) idle_control_->onDeactivated();
         active_task_->update(time, period);
+    }
+    else if (any_controller_active)
+    {
+        if (idle_control_) idle_control_->onDeactivated();
     }
     else
     {
