@@ -70,6 +70,11 @@ def _launch_setup(context, *args, **kwargs):
     avp_udp_ip           = LaunchConfiguration('avp_udp_ip')
     avp_udp_port         = LaunchConfiguration('avp_udp_port')
     avp_frame_id         = LaunchConfiguration('avp_frame_id')
+    launch_avp_image_bridge = LaunchConfiguration('launch_avp_image_bridge')
+    avp_image_bridge_script = LaunchConfiguration('avp_image_bridge_script')
+    avp_image_remote_ip     = LaunchConfiguration('avp_image_remote_ip')
+    avp_image_remote_port   = LaunchConfiguration('avp_image_remote_port')
+    avp_image_max_fps       = LaunchConfiguration('avp_image_max_fps')
 
     if not robot_sides:
         raise RuntimeError("robot_side must be 'left', 'right', or 'dual'.")
@@ -242,6 +247,22 @@ def _launch_setup(context, *args, **kwargs):
             output='screen',
             condition=IfCondition(launch_avp_bridge),
         ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                avp_image_bridge_script,
+                '--ros-args',
+                '-p', ['remote_ip:=', avp_image_remote_ip],
+                '-p', ['remote_port:=', avp_image_remote_port],
+                '-p', ['max_fps:=', avp_image_max_fps],
+            ],
+            name='camera2avp_bridge',
+            output='screen',
+            condition=IfCondition(PythonExpression([
+                "'", LaunchConfiguration('use_mujoco'), "' == 'true' and '",
+                launch_avp_image_bridge, "' == 'true'",
+            ])),
+        ),
     ]
 
     # franka_robot_state_broadcaster: real hardware only (skip for fake or mujoco)
@@ -384,5 +405,14 @@ def generate_launch_description():
         DeclareLaunchArgument('avp_udp_ip',        default_value='0.0.0.0', description='UDP bind IP for AVP bridge'),
         DeclareLaunchArgument('avp_udp_port',      default_value='5005', description='UDP bind port for AVP bridge'),
         DeclareLaunchArgument('avp_frame_id',      default_value='avp_world', description='Frame id used in tracker_pose header'),
+        DeclareLaunchArgument('launch_avp_image_bridge', default_value='true', description='Launch MuJoCo camera image UDP sender for AVP'),
+        DeclareLaunchArgument(
+            'avp_image_bridge_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp.py']),
+            description='Path to ROS-image to AVP UDP sender script',
+        ),
+        DeclareLaunchArgument('avp_image_remote_ip', default_value='192.168.0.84', description='UDP destination IP for AVP image receiver'),
+        DeclareLaunchArgument('avp_image_remote_port', default_value='5010', description='UDP destination port for AVP image receiver'),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='2.0', description='Maximum per-stream UDP image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])
