@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <std_msgs/msg/float64_multi_array.hpp>
+
 #include <Eigen/Eigen>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
@@ -134,6 +136,14 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         Eigen::Vector2d wheel_vel_;
 
         Eigen::Vector2d wheel_vel_desired_;
+
+        
+
+        // ========================================================================
+        // ======================= Command Publish Debugging ======================
+        // ========================================================================
+        rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_mani_debug_pub_;
+        rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_mobi_debug_pub_;
 };
 
 }  // namespace fr3_husky_controller

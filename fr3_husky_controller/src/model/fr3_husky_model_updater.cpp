@@ -82,6 +82,11 @@ bool FR3HuskyModelUpdater::initialize(size_t num_robots,
         xdot_w_desired_[ee_name] = Eigen::Vector6d::Zero();
     }
 
+    // for debugging
+    command_mani_debug_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>( "/debug/command_mani", 10);
+    command_mobi_debug_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>("/debug/command_mobi", 10);
+
+
     return true;
 }
 
@@ -365,6 +370,28 @@ void FR3HuskyModelUpdater:: writeCommand(const Eigen::VectorXd& command_mani, co
     {
         return;
     }
+
+    // for debugging
+    if (command_mani_debug_pub_)
+    {
+        std_msgs::msg::Float64MultiArray msg;
+        msg.data.resize(command_mani.size());
+        for (Eigen::Index i = 0; i < command_mani.size(); ++i)
+        {
+            msg.data[static_cast<size_t>(i)] = command_mani(i);
+        }
+        command_mani_debug_pub_->publish(msg);
+    }
+    if (command_mobi_debug_pub_)
+    {
+        std_msgs::msg::Float64MultiArray msg;
+        msg.data.resize(2);
+        msg.data[0] = command_mobi(0);
+        msg.data[1] = command_mobi(1);
+        command_mobi_debug_pub_->publish(msg);
+    }
+
+
 
     if (static_cast<size_t>(command_mani.size()) == manipulator_dof_)
     {

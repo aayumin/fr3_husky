@@ -1044,24 +1044,6 @@ AppleVisionPro::ResultPtr AppleVisionPro::makeResult(StopReason reason)
 }
 
 
-void AppleVisionPro::subPoseCallback2(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
-{   
-
-    Eigen::Vector3d position(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
-    position = dyros_math::lowPassFilter(position, controller_poses_[0].translation(), 0.001, 0.002);
-    Eigen::Quaterniond quaternion(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
-    quaternion.normalize();
-    Eigen::Matrix3d orientation = quaternion.toRotationMatrix();
-    {
-        std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
-        controller_poses_[0].translation() = position;
-        controller_poses_[0].linear() = orientation;
-    }
-
-
-}
-
-
 
 
 void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
