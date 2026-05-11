@@ -254,6 +254,9 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
     // Initialize franka hand state
     for(const auto& robot_name : fr3_husky_model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
 
+    target_raw_pose_l_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_left", 10);
+    target_raw_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_right", 10);
+
     RCLCPP_INFO(node_->get_logger(), "[%s] AppleVisionPro created", name_.c_str());
 }
 
@@ -689,6 +692,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     }
                 
                 // smoothed target pose
+
                 Eigen::Affine3d raw_target = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
                 double dt = fr3_husky_model_updater_.dt_;
                 if (is_first_target_left_)
@@ -700,7 +704,24 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 prev_target_left_ = smooth_target;
                 ee_data_[left_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
+
                 
+                // for debugging
+                const auto stamp = node_->now();
+                geometry_msgs::msg::PoseStamped pose_msg;
+                pose_msg.header.stamp = node_->now();
+                pose_msg.header.frame_id = "base_link";
+                pose_msg.pose.position.x = raw_target.translation().x();
+                pose_msg.pose.position.y = raw_target.translation().y();
+                pose_msg.pose.position.z = raw_target.translation().z();
+                Eigen::Quaterniond q(raw_target.rotation());
+                q.normalize();
+                pose_msg.pose.orientation.x = q.x();
+                pose_msg.pose.orientation.y = q.y();
+                pose_msg.pose.orientation.z = q.z();
+                pose_msg.pose.orientation.w = q.w();
+                target_raw_pose_l_pub_ ->publish(pose_msg);
+
                 }
             }
         }
@@ -856,7 +877,25 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 prev_target_right_ = smooth_target;
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+
+                // for debugging
+                const auto stamp = node_->now();
+                geometry_msgs::msg::PoseStamped pose_msg;
+                pose_msg.header.stamp = node_->now();
+                pose_msg.header.frame_id = "base_link";
+                pose_msg.pose.position.x = raw_target.translation().x();
+                pose_msg.pose.position.y = raw_target.translation().y();
+                pose_msg.pose.position.z = raw_target.translation().z();
+                Eigen::Quaterniond q(raw_target.rotation());
+                q.normalize();
+                pose_msg.pose.orientation.x = q.x();
+                pose_msg.pose.orientation.y = q.y();
+                pose_msg.pose.orientation.z = q.z();
+                pose_msg.pose.orientation.w = q.w();
+                target_raw_pose_r_pub_ ->publish(pose_msg);
+
                 }
+
             }
         }
     

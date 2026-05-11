@@ -70,6 +70,8 @@ private:
     rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr l_gesture_state_sub_; // off: 0 | on: 1, 
     rclcpp::Subscription<std_msgs::msg::Int32MultiArray>::SharedPtr r_gesture_state_sub_; // off: 0 | on: 1, 
 
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_raw_pose_l_pub_, target_raw_pose_r_pub_;
+
     // remove
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr tmm_mediapipe_sub_;
     void subPoseCallback2(const geometry_msgs::msg::PoseStamped::SharedPtr msg);

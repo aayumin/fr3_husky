@@ -4,7 +4,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseArray, TwistStamped
+from geometry_msgs.msg import PoseArray, PoseStamped, TwistStamped
 from std_msgs.msg import Float64MultiArray
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 import numpy as np
@@ -22,16 +22,16 @@ class TeleopLogger(Node):
         self.left_x, self.left_y, self.left_z = [list() for _ in range(3)]
         self.right_x, self.right_y, self.right_z = [list() for _ in range(3)]
 
-        self.t_cmd = list()
+        self.t_cmd = list()  ## joint torque
         self.cmd_list = [list() for _ in range(14)]
 
-        self.t_x_m = list()
-        self.x_m_list = [list() for _ in range(14)]
+        self.t_target_x_l = list() ## target EE pose
+        self.target_x_l_list = [list() for _ in range(3)]
+        self.t_target_x_r = list() ## target EE pose
+        self.target_x_r_list = [list() for _ in range(3)]
 
-        self.t_xdot_l = list()
-        self.xdot_l_list = [list() for _ in range(6)]
-        self.t_xdot_r = list()
-        self.xdot_r_list = [list() for _ in range(6)]
+        self.t_x_m = list()  # current EE pose
+        self.x_m_list = [list() for _ in range(6)]
 
 
         # QoS 및 Sub
@@ -39,8 +39,8 @@ class TeleopLogger(Node):
         self.create_subscription(PoseArray, "/tracker_pose", self.tracker_callback, sensor_qos)
         self.create_subscription(Float64MultiArray, "/debug/command_mani", self.command_callback, sensor_qos)
         self.create_subscription(PoseArray, "/debug/x_m", self.x_m_callback, sensor_qos)
-        self.create_subscription(TwistStamped, "/debug/xdot_m_l", self.xdot_l_callback, sensor_qos)
-        self.create_subscription(TwistStamped, "/debug/xdot_m_r", self.xdot_r_callback, sensor_qos)
+        self.create_subscription(PoseStamped, "/debug/target_raw_pose_left", self.raw_target_x_l_callback, sensor_qos)
+        self.create_subscription(PoseStamped, "/debug/target_raw_pose_right", self.raw_target_x_r_callback, sensor_qos)
 
         self.start_str = time.strftime('%Y%m%d_%H%M%S')
         self.save_targets = [
@@ -55,19 +55,21 @@ class TeleopLogger(Node):
             (f"x_m_{self.start_str}.csv",
             self.t_x_m,
             self.x_m_list,
-            ["time"]
-            + [f"L_{name}" for name in ["x", "y", "z", "qx", "qy", "qz", "qw"]]
-            + [f"R_{name}" for name in ["x", "y", "z", "qx", "qy", "qz", "qw"]]),
+            ["time", "lx", "ly", "lz", "rx", "ry", "rz"]),
+            # ["time"]
+            # + [f"L_{name}" for name in ["x", "y", "z", "qx", "qy", "qz", "qw"]]
+            # + [f"R_{name}" for name in ["x", "y", "z", "qx", "qy", "qz", "qw"]]),
 
-            (f"xdot_l_{self.start_str}.csv",
-            self.t_xdot_l,
-            self.xdot_l_list,
-            ["time", "vx", "vy", "vz", "wx", "wy", "wz"]),
 
-            (f"xdot_r_{self.start_str}.csv",
-            self.t_xdot_r,
-            self.xdot_r_list,
-            ["time", "vx", "vy", "vz", "wx", "wy", "wz"]),
+            (f"target_x_l_{self.start_str}.csv",
+            self.t_target_x_l,
+            self.target_x_l_list,
+            ["time", "lx", "ly", "lz"]),
+
+            (f"target_x_r_{self.start_str}.csv",
+            self.t_target_x_r,
+            self.target_x_r_list,
+            ["time", "rx", "ry", "rz"]),
 
         ]
 
@@ -97,30 +99,31 @@ class TeleopLogger(Node):
 
         vals = [
             msg.poses[0].position.x, msg.poses[0].position.y, msg.poses[0].position.z,
-            msg.poses[0].orientation.x, msg.poses[0].orientation.y, msg.poses[0].orientation.z, msg.poses[0].orientation.w,
             msg.poses[1].position.x, msg.poses[1].position.y, msg.poses[1].position.z,
-            msg.poses[1].orientation.x, msg.poses[1].orientation.y, msg.poses[1].orientation.z, msg.poses[1].orientation.w,
         ]
         for i, v in enumerate(vals): self.x_m_list[i].append(v)
 
-
-    def xdot_l_callback(self, msg):
+    def raw_target_x_l_callback(self, msg):
         now = time.time()
         if self.base_time is None: self.base_time = now
+        self.t_target_x_l.append(now - self.base_time)
 
-        self.t_xdot_l.append(now - self.base_time)
-        vals = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z, msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
-        for i, v in enumerate(vals): self.xdot_l_list[i].append(v)
+        vals = [
+            msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+        ]
+        for i, v in enumerate(vals): self.target_x_l_list[i].append(v)
 
 
-    def xdot_r_callback(self, msg):
+    def raw_target_x_r_callback(self, msg):
         now = time.time()
         if self.base_time is None: self.base_time = now
+        self.t_target_x_r.append(now - self.base_time)
 
-        self.t_xdot_r.append(now - self.base_time)
-        vals = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z, msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
-        for i, v in enumerate(vals): self.xdot_r_list[i].append(v)
-        
+        vals = [
+            msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+        ]
+        for i, v in enumerate(vals): self.target_x_r_list[i].append(v)
+
 
     def update(self):
 
