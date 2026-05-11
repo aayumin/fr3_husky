@@ -45,17 +45,17 @@ end_t = max(times_max) if times_max else 0.0
 
 # --- 그래프 설정 ---
 # Window 1: Tracker (2 Axes)
-fig1, (ax1_pos, ax1_dt) = plt.subplots(2, 1, figsize=(8, 8))
+fig1, (ax1_pos, ax1_dt) = plt.subplots(2, 1, figsize=(8, 16))
 fig1.canvas.manager.set_window_title('Tracker Data Playback')
 
 # Window 2: target_X_pose (2 Axes)
-fig2, (ax2_pos) = plt.subplots(1, 1, figsize=(8, 8))
+fig2, (ax2_pos) = plt.subplots(1, 1, figsize=(8, 6))
 fig2.canvas.manager.set_window_title('target_raw_x Data Playback')
 
 
 
 # Window 3: current_X_pose (2 Axes)
-fig3, (ax3_pos) = plt.subplots(1, 1, figsize=(8, 8))
+fig3, (ax3_pos) = plt.subplots(1, 1, figsize=(8, 6))
 fig3.canvas.manager.set_window_title('x_ Data Playback')
 
 
@@ -109,12 +109,12 @@ def update(current_t):
     if initial_tracker_pos is None and not t_data.empty:
         initial_tracker_pos = (t_data.loc[0, 'lx'], t_data.loc[0, 'ly'], t_data.loc[0, 'lz'], t_data.loc[0, 'rx'], t_data.loc[0, 'ry'], t_data.loc[0, 'rz'])
     if initial_curxpos is not None and not t_data.empty:
-        t_data['lx'] = (t_data['lx'] - initial_tracker_pos[0]) + initial_curxpos[0]
-        t_data['ly'] = (t_data['ly'] - initial_tracker_pos[1]) + initial_curxpos[1]
-        t_data['lz'] = (t_data['lz'] - initial_tracker_pos[2]) + initial_curxpos[2]
-        t_data['rx'] = (t_data['rx'] - initial_tracker_pos[3]) + initial_curxpos[3]
-        t_data['ry'] = (t_data['ry'] - initial_tracker_pos[4]) + initial_curxpos[4]
-        t_data['rz'] = (t_data['rz'] - initial_tracker_pos[5]) + initial_curxpos[5]
+        t_data.loc[:,'lx'] = (t_data.loc[:,'lx'] - initial_tracker_pos[0]) + initial_curxpos[0]
+        t_data.loc[:,'ly'] = (t_data.loc[:,'ly'] - initial_tracker_pos[1]) + initial_curxpos[1]
+        t_data.loc[:,'lz'] = (t_data.loc[:,'lz'] - initial_tracker_pos[2]) + initial_curxpos[2]
+        t_data.loc[:,'rx'] = (t_data.loc[:,'rx'] - initial_tracker_pos[3]) + initial_curxpos[3]
+        t_data.loc[:,'ry'] = (t_data.loc[:,'ry'] - initial_tracker_pos[4]) + initial_curxpos[4]
+        t_data.loc[:,'rz'] = (t_data.loc[:,'rz'] - initial_tracker_pos[5]) + initial_curxpos[5]
         ln_lx.set_data(t_data['time'], t_data['lx']); ln_ly.set_data(t_data['time'], t_data['ly']); ln_lz.set_data(t_data['time'], t_data['lz'])
         ln_rx.set_data(t_data['time'], t_data['rx']); ln_ry.set_data(t_data['time'], t_data['ry']); ln_rz.set_data(t_data['time'], t_data['rz'])
 
