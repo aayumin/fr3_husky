@@ -8,6 +8,8 @@
 #include <vector>
 
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 #include <Eigen/Eigen>
 #include <rclcpp/rclcpp.hpp>
@@ -140,10 +142,14 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         
 
         // ========================================================================
-        // ======================= Command Publish Debugging ======================
+        // ===============================  Debugging =============================
         // ========================================================================
         rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_mani_debug_pub_;
         rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_mobi_debug_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr x_m_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr xdot_m_l_pub_, xdot_m_r_pub_;
+        rclcpp::TimerBase::SharedPtr debug_publish_timer_;
+        void publishDebugState();
 };
 
 }  // namespace fr3_husky_controller
