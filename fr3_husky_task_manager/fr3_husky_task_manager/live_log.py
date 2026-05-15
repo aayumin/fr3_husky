@@ -30,6 +30,12 @@ class TeleopLogger(Node):
         self.t_target_x_r = list() ## target EE pose
         self.target_x_r_list = [list() for _ in range(3)]
 
+        self.t_smooth_target_x_l = list() ## target EE pose
+        self.smooth_target_x_l_list = [list() for _ in range(3)]
+        self.t_smooth_target_x_r = list() ## target EE pose
+        self.smooth_target_x_r_list = [list() for _ in range(3)]
+
+
         self.t_x_m = list()  # current EE pose
         self.x_m_list = [list() for _ in range(6)]
 
@@ -41,6 +47,8 @@ class TeleopLogger(Node):
         self.create_subscription(PoseArray, "/debug/x_m", self.x_m_callback, sensor_qos)
         self.create_subscription(PoseStamped, "/debug/target_raw_pose_left", self.raw_target_x_l_callback, sensor_qos)
         self.create_subscription(PoseStamped, "/debug/target_raw_pose_right", self.raw_target_x_r_callback, sensor_qos)
+        self.create_subscription(PoseStamped, "/debug/target_smooth_pose_left", self.smooth_target_x_l_callback, sensor_qos)
+        self.create_subscription(PoseStamped, "/debug/target_smooth_pose_right", self.smooth_target_x_r_callback, sensor_qos)
 
         self.start_str = time.strftime('%Y%m%d_%H%M%S')
         self.save_targets = [
@@ -70,6 +78,18 @@ class TeleopLogger(Node):
             self.t_target_x_r,
             self.target_x_r_list,
             ["time", "rx", "ry", "rz"]),
+
+
+            (f"smooth_target_x_l_{self.start_str}.csv",
+            self.t_smooth_target_x_l,
+            self.smooth_target_x_l_list,
+            ["time", "lx", "ly", "lz"]),
+
+            (f"smooth_target_x_r_{self.start_str}.csv",
+            self.t_smooth_target_x_r,
+            self.smooth_target_x_r_list,
+            ["time", "rx", "ry", "rz"]),
+
 
         ]
 
@@ -123,6 +143,30 @@ class TeleopLogger(Node):
             msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
         ]
         for i, v in enumerate(vals): self.target_x_r_list[i].append(v)
+
+
+    def smooth_target_x_l_callback(self, msg):
+        now = time.time()
+        if self.base_time is None: self.base_time = now
+        self.t_smooth_target_x_l.append(now - self.base_time)
+
+        vals = [
+            msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+        ]
+        for i, v in enumerate(vals): self.smooth_target_x_l_list[i].append(v)
+
+
+    def smooth_target_x_r_callback(self, msg):
+        now = time.time()
+        if self.base_time is None: self.base_time = now
+        self.t_smooth_target_x_r.append(now - self.base_time)
+
+        vals = [
+            msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+        ]
+        for i, v in enumerate(vals): self.smooth_target_x_r_list[i].append(v)
+
+
 
 
     def update(self):

@@ -256,6 +256,8 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
 
     target_raw_pose_l_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_left", 10);
     target_raw_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_right", 10);
+    target_smooth_pose_l_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_smooth_pose_left", 10);
+    target_smooth_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_smooth_pose_right", 10);
 
     RCLCPP_INFO(node_->get_logger(), "[%s] AppleVisionPro created", name_.c_str());
 }
@@ -722,6 +724,23 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 pose_msg.pose.orientation.w = q.w();
                 target_raw_pose_l_pub_ ->publish(pose_msg);
 
+
+
+                // for debugging
+                geometry_msgs::msg::PoseStamped pose_msg2;
+                pose_msg2.header.stamp = node_->now();
+                pose_msg2.header.frame_id = "base_link";
+                pose_msg2.pose.position.x = smooth_target.translation().x();
+                pose_msg2.pose.position.y = smooth_target.translation().y();
+                pose_msg2.pose.position.z = smooth_target.translation().z();
+                Eigen::Quaterniond q2(smooth_target.rotation());
+                q2.normalize();
+                pose_msg2.pose.orientation.x = q2.x();
+                pose_msg2.pose.orientation.y = q2.y();
+                pose_msg2.pose.orientation.z = q2.z();
+                pose_msg2.pose.orientation.w = q2.w();
+                target_smooth_pose_l_pub_ ->publish(pose_msg2);
+
                 }
             }
         }
@@ -894,6 +913,26 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 pose_msg.pose.orientation.w = q.w();
                 target_raw_pose_r_pub_ ->publish(pose_msg);
 
+
+
+
+                // for debugging
+                geometry_msgs::msg::PoseStamped pose_msg2;
+                pose_msg2.header.stamp = node_->now();
+                pose_msg2.header.frame_id = "base_link";
+                pose_msg2.pose.position.x = smooth_target.translation().x();
+                pose_msg2.pose.position.y = smooth_target.translation().y();
+                pose_msg2.pose.position.z = smooth_target.translation().z();
+                Eigen::Quaterniond q2(smooth_target.rotation());
+                q2.normalize();
+                pose_msg2.pose.orientation.x = q2.x();
+                pose_msg2.pose.orientation.y = q2.y();
+                pose_msg2.pose.orientation.z = q2.z();
+                pose_msg2.pose.orientation.w = q2.w();
+                target_smooth_pose_r_pub_ ->publish(pose_msg2);
+
+
+                
                 }
 
             }
