@@ -29,6 +29,7 @@ setup(
             'move_to_joint = fr3_husky_task_manager.move_to_joint:main',
             'gripper_move = fr3_husky_task_manager.gripper_move:main',
             'log = fr3_husky_task_manager.live_log:main',
+            'image = fr3_husky_task_manager.image_streaming:main',
         ],
     },
 )
