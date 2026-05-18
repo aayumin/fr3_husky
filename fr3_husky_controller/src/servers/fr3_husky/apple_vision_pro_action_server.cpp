@@ -577,26 +577,26 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     const Eigen::Vector3d p_hand_init_world =
                         controller_poses_init_[IDX_LEFT_CON].translation();
 
-                    const Eigen::Vector3d p_head_cur_world =
-                        controller_poses_local[IDX_HEAD_CON].translation();
-                    const Eigen::Vector3d p_head_init_world =
-                        controller_poses_init_[IDX_HEAD_CON].translation();
+                    // const Eigen::Vector3d p_head_cur_world =
+                    //     controller_poses_local[IDX_HEAD_CON].translation();
+                    // const Eigen::Vector3d p_head_init_world =
+                    //     controller_poses_init_[IDX_HEAD_CON].translation();
 
-                    const Eigen::Matrix3d R_world_from_head_cur =
-                        controller_poses_local[IDX_HEAD_CON].linear();
+                    // const Eigen::Matrix3d R_world_from_head_cur =
+                    //     controller_poses_local[IDX_HEAD_CON].linear();
                     const Eigen::Matrix3d R_world_from_head_init =
                         controller_poses_init_[IDX_HEAD_CON].linear();
 
                     // Hand expressed in current / initial head frame
-                    const Eigen::Vector3d hand_cur_rel_head =
-                        R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
+                    // const Eigen::Vector3d hand_cur_rel_head =
+                    //     R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
 
-                    const Eigen::Vector3d hand_init_rel_head =
-                        R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
+                    // const Eigen::Vector3d hand_init_rel_head =
+                    //     R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
 
                     // True AVP-frame delta
-                    Eigen::Vector3d delta_avp =
-                        hand_cur_rel_head - hand_init_rel_head;
+                    Eigen::Vector3d delta_avp = R_world_from_head_init.transpose() * (p_hand_cur_world - p_hand_init_world);
+                        // hand_cur_rel_head - hand_init_rel_head;
 
                     // Deadband
                     const double POS_EPS = 0.015;
@@ -771,24 +771,25 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     const Eigen::Vector3d p_hand_init_world =
                         controller_poses_init_[IDX_RIGHT_CON].translation();
 
-                    const Eigen::Vector3d p_head_cur_world =
-                        controller_poses_local[IDX_HEAD_CON].translation();
-                    const Eigen::Vector3d p_head_init_world =
-                        controller_poses_init_[IDX_HEAD_CON].translation();
+                    // const Eigen::Vector3d p_head_cur_world =
+                    //     controller_poses_local[IDX_HEAD_CON].translation();
+                    // const Eigen::Vector3d p_head_init_world =
+                    //     controller_poses_init_[IDX_HEAD_CON].translation();
 
-                    const Eigen::Matrix3d R_world_from_head_cur =
-                        controller_poses_local[IDX_HEAD_CON].linear();
+                    // const Eigen::Matrix3d R_world_from_head_cur =
+                    //     controller_poses_local[IDX_HEAD_CON].linear();
                     const Eigen::Matrix3d R_world_from_head_init =
                         controller_poses_init_[IDX_HEAD_CON].linear();
 
-                    const Eigen::Vector3d hand_cur_rel_head =
-                        R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
+                    // const Eigen::Vector3d hand_cur_rel_head =
+                    //     R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
 
-                    const Eigen::Vector3d hand_init_rel_head =
-                        R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
+                    // const Eigen::Vector3d hand_init_rel_head =
+                    //     R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
 
-                    Eigen::Vector3d delta_avp =
-                        hand_cur_rel_head - hand_init_rel_head;
+                    Eigen::Vector3d delta_avp = R_world_from_head_init.transpose() * (p_hand_cur_world - p_hand_init_world);
+                        // hand_cur_rel_head - hand_init_rel_head;
+                        
 
                     // Deadband
                     const double POS_EPS = 0.05;
@@ -896,7 +897,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
                 target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
                 prev_target_right_ = smooth_target;
-                
+
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
                 
