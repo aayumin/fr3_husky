@@ -599,13 +599,13 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     // R_world_from_head_init.transpose() * (p_hand_cur_world - p_hand_init_world);
                         
 
-                    // Deadband
-                    const double POS_EPS = 0.015;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        if (std::abs(delta_avp(k)) < POS_EPS)
-                            delta_avp(k) = 0.0;
-                    }
+                    // // Deadband
+                    // const double POS_EPS = 0.015;
+                    // for (int k = 0; k < 3; ++k)
+                    // {
+                    //     if (std::abs(delta_avp(k)) < POS_EPS)
+                    //         delta_avp(k) = 0.0;
+                    // }
 
                     // // Clamp
                     // const double MAX_POS_DELTA = 0.5;
@@ -704,7 +704,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     is_first_target_left_ = false;
                 }
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
-                target_vel = computeTargetVelocity(prev_target_left_, smooth_target, dt);
+                // target_vel = computeTargetVelocity(prev_target_left_, smooth_target, dt);
                 prev_target_left_ = smooth_target;
                 ee_data_[left_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
@@ -792,21 +792,21 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         // R_world_from_head_init.transpose() * (p_hand_cur_world - p_hand_init_world);
                         
 
-                    // Deadband
-                    const double POS_EPS = 0.05;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        if (std::abs(delta_avp(k)) < POS_EPS)
-                            delta_avp(k) = 0.0;
-                    }
+                    // // Deadband
+                    // const double POS_EPS = 0.05;
+                    // for (int k = 0; k < 3; ++k)
+                    // {
+                    //     if (std::abs(delta_avp(k)) < POS_EPS)
+                    //         delta_avp(k) = 0.0;
+                    // }
 
-                    // Clamp
-                    const double MAX_POS_DELTA = 0.5;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
-                        if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
-                    }
+                    // // Clamp
+                    // const double MAX_POS_DELTA = 0.5;
+                    // for (int k = 0; k < 3; ++k)
+                    // {
+                    //     if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
+                    //     if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
+                    // }
 
                     const Eigen::Vector3d delta_base =
                         R_base_from_avp * delta_avp;
@@ -896,7 +896,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     is_first_target_right_ = false;
                 }
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
-                target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
+                // target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
                 prev_target_right_ = smooth_target;
 
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
