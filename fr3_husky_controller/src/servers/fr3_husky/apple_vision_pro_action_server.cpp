@@ -599,20 +599,20 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         hand_cur_rel_head - hand_init_rel_head;
 
                     // Deadband
-                    const double POS_EPS = 0.05;
+                    const double POS_EPS = 0.015;
                     for (int k = 0; k < 3; ++k)
                     {
                         if (std::abs(delta_avp(k)) < POS_EPS)
                             delta_avp(k) = 0.0;
                     }
 
-                    // Clamp
-                    const double MAX_POS_DELTA = 0.5;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
-                        if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
-                    }
+                    // // Clamp
+                    // const double MAX_POS_DELTA = 0.5;
+                    // for (int k = 0; k < 3; ++k)
+                    // {
+                    //     if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
+                    //     if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
+                    // }
 
                     // Map AVP frame -> base frame
                     const Eigen::Vector3d delta_base =
@@ -660,7 +660,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                         const double MAX_ROT_DELTA = 0.60;  // ~34 deg
                         if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
-                        if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;
+                        // if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;  // angle value of AngleAxisd : 0 ~ pi
 
                         if (std::abs(angle) > 1e-10)
                         {
@@ -703,6 +703,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     is_first_target_left_ = false;
                 }
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
+                target_vel = computeTargetVelocity(prev_target_left_, smooth_target, dt);
                 prev_target_left_ = smooth_target;
                 ee_data_[left_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
@@ -750,7 +751,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
             Eigen::Vector6d target_vel;
             target_pose_diff.setIdentity();
-            target_vel.setZero();
+            // target_vel.setZero();
 
             if (is_tracking_mode_on_[IDX_RIGHT_CON])
             {
@@ -893,9 +894,12 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     is_first_target_right_ = false;
                 }
                 Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
+                target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
                 prev_target_right_ = smooth_target;
+                
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+                
 
                 // for debugging
                 const auto stamp = node_->now();
@@ -947,22 +951,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
         {
             case 0: // CLIK
                 {   
-                    // Null-space homing is intentionally disabled.
-                    // Eigen::VectorXd HomePose_total(fr3_husky_model_updater_.manipulator_dof_);
-                    // for(size_t i = 0; i < fr3_husky_model_updater_.num_robots_; ++i)
-                    //     HomePose_total.segment(FR3_DOF*i, FR3_DOF) = HomePose;
-                    //
-                    // static constexpr double null_space_duration = 5.0;
-                    // const Eigen::VectorXd zeros_mani = Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
-                    // const Eigen::VectorXd null_qdot_mani =
-                    //     fr3_husky_model_updater_.robot_controller_->moveManipulatorJointVelocityCubic(
-                    //         HomePose_total,
-                    //         zeros_mani,
-                    //         q_init_for_home_,
-                    //         zeros_mani,
-                    //         time.seconds(),
-                    //         control_start_time_,
-                    //         null_space_duration);
                     const Eigen::VectorXd null_qdot_mani =
                         Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
 
@@ -1006,20 +994,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             case 1: // OSF
                 {
                     Eigen::VectorXd null_torque(fr3_husky_model_updater_.robot_data_->getActuatorDof());
-                    // Eigen::VectorXd HomePose_total(fr3_husky_model_updater_.manipulator_dof_);
-                    // for(size_t i = 0; i < fr3_husky_model_updater_.num_robots_; ++i)
-                    //     HomePose_total.segment(FR3_DOF*i, FR3_DOF) = HomePose;
-                    // null_torque.segment(
-                    //     fr3_husky_model_updater_.robot_data_->getActuatorIndex().mani_start,
-                    //     fr3_husky_model_updater_.manipulator_dof_) =
-                    //     fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueCubic(
-                    //         HomePose_total,
-                    //         Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_),
-                    //         q_init_for_home_,
-                    //         Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_),
-                    //         time.seconds(),
-                    //         control_start_time_,
-                    //         3.0);
                     null_torque.segment(
                         fr3_husky_model_updater_.robot_data_->getActuatorIndex().mani_start,
                         fr3_husky_model_updater_.manipulator_dof_) =
@@ -1092,6 +1066,35 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     
         return ComputeResult::RUNNING;
     }
+
+Eigen::Vector6d AppleVisionPro::computeTargetVelocity(
+    const Eigen::Affine3d& prev,
+    const Eigen::Affine3d& cur,
+    double dt)
+{
+    Eigen::Vector6d vel;
+    vel.setZero();
+
+    if (dt <= 1e-6) {
+        return vel;
+    }
+
+    vel.head<3>() = (cur.translation() - prev.translation()) / dt;
+
+    Eigen::Matrix3d R_delta = cur.linear() * prev.linear().transpose();
+    Eigen::AngleAxisd aa(R_delta);
+
+    double angle = aa.angle();
+    if (angle > M_PI) {
+        angle -= 2.0 * M_PI;
+    }
+
+    if (std::abs(angle) > 1e-9) {
+        vel.tail<3>() = aa.axis() * angle / dt;
+    }
+
+    return vel;
+}
 
 void AppleVisionPro::onStop(StopReason reason)
 {
@@ -1209,20 +1212,25 @@ Eigen::Affine3d AppleVisionPro::smoothAndLimit(const Eigen::Affine3d& prev, cons
     // --- 3. Orientation smoothing (slerp)
     Eigen::Quaterniond q_prev(prev.linear());
     Eigen::Quaterniond q_target(target.linear());
+    q_prev.normalize();
+    q_target.normalize();
 
-    Eigen::Quaterniond q_interp = q_prev.slerp(smoothing_alpha_, q_target);
+    if (q_prev.dot(q_target) < 0.0) q_target.coeffs() *= -1.0;
 
-    // --- 4. Angular velocity limit
-    Eigen::AngleAxisd aa(q_prev.inverse() * q_interp);
-    double max_angle = max_angular_vel_ * dt;
+    Eigen::Quaterniond q_smooth = q_prev.slerp(smoothing_alpha_, q_target);
+    q_smooth.normalize();
+    Eigen::Quaterniond q_delta = q_prev.inverse() * q_smooth;
+    q_delta.normalize();
 
-    if (std::abs(aa.angle()) > max_angle)
-    {
-        aa.angle() = max_angle;
-        q_interp = q_prev * Eigen::Quaterniond(aa);
+    Eigen::AngleAxisd aa(q_delta);
+    const double max_angle = max_angular_vel_ * dt;
+
+    if (aa.angle() > max_angle) {
+        q_smooth = q_prev * Eigen::Quaterniond(Eigen::AngleAxisd(max_angle, aa.axis()));
+        q_smooth.normalize();
     }
 
-    result.linear() = q_interp.toRotationMatrix();
+    result.linear() = q_smooth.toRotationMatrix();
     return result;
 }
 

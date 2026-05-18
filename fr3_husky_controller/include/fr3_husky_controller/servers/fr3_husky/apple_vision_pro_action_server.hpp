@@ -109,9 +109,8 @@ private:
     double max_angular_vel_ = 1.0;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
 
-    // double smoothing_alpha_ = 1.0;
-    // double max_linear_vel_ = 10.0;
-    // double max_angular_vel_ = 10.0;
+    Eigen::Vector6d computeTargetVelocity(const Eigen::Affine3d& prev, const Eigen::Affine3d& cur, double dt);
+
 
     // tracking state
     bool auto_tracking_started_ = false;
