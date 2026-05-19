@@ -114,7 +114,7 @@ private:
     bool auto_tracking_started_ = false;
     std::array<bool, NUM_TRACKERS> tracker_pose_valid_{{false, false, false}};
     double avp_tracking_enable_delay_ = 5.0;
-    int steps_until_capture_init_tracker = 200;
+    int steps_until_capture_init_tracker = 50;
     int num_steps = 0;
 
     Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};

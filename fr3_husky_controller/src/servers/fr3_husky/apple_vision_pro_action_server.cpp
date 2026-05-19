@@ -380,6 +380,9 @@ void AppleVisionPro::onStart()
 AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
 
+    static int dbg_cnt = 0;
+    dbg_cnt++;
+
 
     for(auto& [ee_name, ee_data] : ee_data_)
     {
@@ -519,6 +522,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
         if (!auto_tracking_started_)
         {   
+
+
             const bool head_tracker_valid =
                 tracker_pose_valid_.size() == NUM_TRACKERS &&
                 tracker_pose_valid_[IDX_HEAD_CON];
@@ -534,10 +539,9 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 (time.seconds() - control_start_time_) >= avp_tracking_enable_delay_)
             {
 
-                    num_steps++;
-                    if (num_steps >= steps_until_capture_init_tracker) 
-                    {
-
+                num_steps++;
+                if (num_steps >= steps_until_capture_init_tracker) 
+                {
 
                     RCLCPP_INFO(node_->get_logger(),
                                 "[%s] Auto tracking ON after %.2f sec. left=%s right=%s",
@@ -545,6 +549,9 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                                 avp_tracking_enable_delay_,
                                 left_tracker_valid ? "true" : "false",
                                 right_tracker_valid ? "true" : "false");
+
+
+
 
                     // Head init is common
                     controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
@@ -590,13 +597,15 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
             if (is_tracking_mode_on_[IDX_LEFT_CON])
             {
-                // if (!runStartupOrientationCalibration(IDX_LEFT_CON, left_controller_ee_name_))
                 if (false)
                 {
                     target_pose_diff.setIdentity();
                 }
                 else
                 {
+                    
+
+
                     const Eigen::Matrix3d R_base_from_avp = getBaseFromAVPPositionMap();
 
                     // ---------------------------
@@ -730,6 +739,14 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                 }
             }
+        }
+
+
+        
+        if (dbg_cnt % 250 == 0) {
+            std::cout <<  "left x_desired : \n" << ee_data_[left_controller_ee_name_].x_desired.matrix() << std::endl;
+            std::cout <<  "left xdot_desired : \n" << ee_data_[left_controller_ee_name_].xdot_desired.transpose() << std::endl;
+            std::cout << "==========================" << std::endl;
         }
     
         if(!right_controller_ee_name_.empty()) // right AVP controller
@@ -886,6 +903,25 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+
+                if (dbg_cnt % 250 == 0) {
+                    
+
+                    std::cout << "curr right (Rot) : \n" << controller_poses_local[IDX_RIGHT_CON].linear() << std::endl;
+                    std::cout << "init right (Rot) : \n" << controller_poses_init_[IDX_RIGHT_CON].linear() << std::endl;
+                    std::cout << " ------------------------------ " << std::endl;
+                    std::cout << "curr x ori : \n" << ee_data_[right_controller_ee_name_].x.linear() << std::endl;
+                    std::cout << "init x ori : \n" << ee_data_[right_controller_ee_name_].x_init.linear() << std::endl;
+                    std::cout << " =================================== " << std::endl;
+                    std::cout << "curr right cont : " << controller_poses_local[IDX_RIGHT_CON].translation().transpose() << std::endl;
+                    std::cout << "init right cont : " << controller_poses_init_[IDX_RIGHT_CON].translation().transpose() << std::endl;
+                    std::cout << " ------------------------------ " << std::endl;
+                    std::cout << "raw_target : " << raw_target.translation().transpose() << std::endl;
+                    std::cout << "smooth_target : " << smooth_target.translation().transpose() << std::endl;
+                    std::cout << "current x pos : " << ee_data_[right_controller_ee_name_].x.translation().transpose() << std::endl;
+                    std::cout << "init x pos : " << ee_data_[right_controller_ee_name_].x_init.translation().transpose() << std::endl;
+                    std::cout << " =================================== \n\n\n" << std::endl;
+                }
             
 
                 
