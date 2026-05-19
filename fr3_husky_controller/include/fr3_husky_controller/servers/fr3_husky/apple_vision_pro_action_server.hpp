@@ -72,7 +72,6 @@ private:
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_raw_pose_l_pub_, target_raw_pose_r_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_smooth_pose_l_pub_, target_smooth_pose_r_pub_;
-
     // remove
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr tmm_mediapipe_sub_;
     void subPoseCallback2(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
@@ -94,7 +93,6 @@ private:
     std::vector<bool> is_gripper_mode_on_{false, false};
     
     // robot data
-    std::vector<Eigen::Matrix3d> tracker_base2robot_base_;
     std::map<std::string, drc::TaskSpaceData> ee_data_;
 
 
@@ -105,7 +103,7 @@ private:
     bool is_first_target_right_ = true;
     Eigen::Affine3d smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt);
 
-    double max_linear_vel_ = 0.3;   // m/s
+    double max_linear_vel_ = 0.5;   // m/s
     double max_angular_vel_ = 1.0;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
 
@@ -116,6 +114,8 @@ private:
     bool auto_tracking_started_ = false;
     std::array<bool, NUM_TRACKERS> tracker_pose_valid_{{false, false, false}};
     double avp_tracking_enable_delay_ = 5.0;
+    int steps_until_capture_init_tracker = 200;
+    int num_steps = 0;
 
     Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};
     Eigen::Affine3d world_from_base_cur_{Eigen::Affine3d::Identity()};
