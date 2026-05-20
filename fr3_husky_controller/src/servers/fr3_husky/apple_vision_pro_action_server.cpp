@@ -321,7 +321,7 @@ void AppleVisionPro::onGoalAccepted(const ActionT::Goal& goal)
 void AppleVisionPro::onStart()
 {
 
-    dbg_cnt = 0;
+    
     {
         std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
         for(auto& tracker_pose : controller_poses_) tracker_pose.setIdentity();
@@ -383,8 +383,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 {
 
     
-    dbg_cnt++;
-
+    
 
     for(auto& [ee_name, ee_data] : ee_data_)
     {
@@ -739,11 +738,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 
         
-        // if (dbg_cnt % 250 == 0) {
-        //     std::cout <<  "left x_desired : \n" << ee_data_[left_controller_ee_name_].x_desired.matrix() << std::endl;
-        //     std::cout <<  "left xdot_desired : \n" << ee_data_[left_controller_ee_name_].xdot_desired.transpose() << std::endl;
-        //     std::cout << "==========================" << std::endl;
-        // }
     
         if(!right_controller_ee_name_.empty()) // right AVP controller
         {
@@ -902,34 +896,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 
 
-                if (dbg_cnt % 250 == 0) {
-                    std::cout << "curr left  cont : " << controller_poses_local[IDX_LEFT_CON].translation().transpose() << std::endl;
-                    std::cout << "init left  cont : " << controller_poses_init_[IDX_LEFT_CON].translation().transpose() << std::endl;
-                    std::cout << " ------------------------------ " << std::endl;
-                    std::cout << "curr right cont : " << controller_poses_local[IDX_RIGHT_CON].translation().transpose() << std::endl;
-                    std::cout << "init right cont : " << controller_poses_init_[IDX_RIGHT_CON].translation().transpose() << std::endl;
-                }
-
-
-                // if (dbg_cnt % 250 == 0) {
-                    
-
-                //     std::cout << "curr right (Rot) : \n" << controller_poses_local[IDX_RIGHT_CON].linear() << std::endl;
-                //     std::cout << "init right (Rot) : \n" << controller_poses_init_[IDX_RIGHT_CON].linear() << std::endl;
-                //     std::cout << " ------------------------------ " << std::endl;
-                //     std::cout << "curr x ori : \n" << ee_data_[right_controller_ee_name_].x.linear() << std::endl;
-                //     std::cout << "init x ori : \n" << ee_data_[right_controller_ee_name_].x_init.linear() << std::endl;
-                //     std::cout << " =================================== " << std::endl;
-                //     std::cout << "curr right cont : " << controller_poses_local[IDX_RIGHT_CON].translation().transpose() << std::endl;
-                //     std::cout << "init right cont : " << controller_poses_init_[IDX_RIGHT_CON].translation().transpose() << std::endl;
-                //     std::cout << " ------------------------------ " << std::endl;
-                //     std::cout << "raw_target : " << raw_target.translation().transpose() << std::endl;
-                //     std::cout << "smooth_target : " << smooth_target.translation().transpose() << std::endl;
-                //     std::cout << "current x pos : " << ee_data_[right_controller_ee_name_].x.translation().transpose() << std::endl;
-                //     std::cout << "init x pos : " << ee_data_[right_controller_ee_name_].x_init.translation().transpose() << std::endl;
-                //     std::cout << " =================================== \n\n\n" << std::endl;
-                // }
-            
 
                 
                 }
@@ -1124,9 +1090,6 @@ AppleVisionPro::ResultPtr AppleVisionPro::makeResult(StopReason reason)
 
 void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
 {       
-    static int dbg_cnt2 = 0;
-    dbg_cnt2++;
-
     if(msg->poses.size() != NUM_TRACKERS)
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Size of PoseArray for tracker_pose (%ld) does not equal to 3.", name_.c_str(), msg->poses.size());
@@ -1147,11 +1110,6 @@ void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::Shared
             }
 
 
-
-            // remove
-            if (dbg_cnt2 % 15 == 0) {
-                std::cout << "[" << dbg_cnt << "] sub callback:  " << position.transpose() << std::endl;
-            }
 
             // pose valid
             tracker_pose_valid_[i] = true;
