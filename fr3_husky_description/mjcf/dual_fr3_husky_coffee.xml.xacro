@@ -22,6 +22,7 @@
     <!-- camera xacro includes -->
     <xacro:include filename="$(find fr3_husky_description)/mjcf/realsense_d435i.xml.xacro"/>
     <xacro:include filename="$(find fr3_husky_description)/mjcf/azure_kinect.xml.xacro"/>
+    <xacro:include filename="$(find fr3_husky_description)/mjcf/coffee_scene.xml.xacro"/>
     <xacro:include filename="$(find fr3_husky_description)/mjcf/assets/d435i_assets.xml.xacro" />
     <xacro:include filename="$(find fr3_husky_description)/mjcf/assets/azure_kinect_assets.xml.xacro" />
 
@@ -107,7 +108,9 @@
             hand_vis_mesh_materials="['off_white','black','black','white','off_white']"
             finger_vis_mesh_materials="['off_white','black']">
             <cam_body>
-                <body name="${arm_prefix}_fr3_hand_tcp" pos="0 0 0.1034"/>
+                <body name="${arm_prefix}_fr3_hand_tcp" pos="0 0 0.1034">
+                    <site name="${arm_prefix}_fr3_hand_tcp_ft_site" pos="0 0 0" size="0.003" rgba="0 1 0 0.2"/>
+                </body>
                 <xacro:if value="$(arg with_realsense)">
                     <xacro:realsense_d435i_mjcf prefix="${arm_prefix}" ee2cam_tf="${ee2cam_tf}"
                         color_width="$(arg d435i_color_width)"
@@ -159,16 +162,28 @@
     <!-- ── Assets ── -->
     <asset>
         <!-- textures / ground material -->
-        <texture type="skybox"  builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072" />
-        <texture type="2d" name="groundplane" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
-                 width="300" height="300" mark="edge" markrgb="0.8 0.8 0.8" />
-        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2" />
-        <material name="table_brown" rgba="0.55 0.27 0.07 1" />
+        <texture type="skybox" builtin="gradient" rgb1=".9 .9 1." rgb2=".2 .3 .4" width="256" height="256" />
+        <texture file="$(find fr3_husky_description)/textures/light-gray-floor-tile.png" type="2d" name="texplane"/>
+        <material name="floorplane" reflectance="0.01" shininess="0.0" specular="0.0" texrepeat="2 2" texture="texplane" texuniform="true"/>
+        <texture file="$(find fr3_husky_description)/textures/ceramic.png" type="cube" name="tex-ceramic"/>
+        <material name="ceramic" reflectance="0.5" texrepeat="1 1" texture="tex-ceramic" texuniform="true"/>
+        <material name="table_ceramic" reflectance="0.0" shininess="0.0" specular="0.2" texrepeat="1 1" texture="tex-ceramic"/>
+        <texture file="$(find fr3_husky_description)/textures/steel-scratched.png" type="cube" name="steel-metal"/>
+        <texture file="$(find fr3_husky_description)/textures/brass-ambra.png" type="cube" name="brass-metal"/>
+        <material name="smetal" reflectance="1.0" shininess="1.0" specular="1.0" texrepeat="1 1" texture="steel-metal" texuniform="true"/>
+        <material name="bmetal" reflectance="1.0" shininess="1.0" specular="1.0" texrepeat="1 1" texture="brass-metal" texuniform="true"/>
+        <texture file="$(find fr3_husky_description)/textures/steel-brushed.png" type="cube" name="tex-steel-brushed"/>
+        <material name="table_legs_metal" reflectance="0.8" shininess="0.8" texrepeat="1 1" texture="tex-steel-brushed"/>
+        <texture file="$(find fr3_husky_description)/textures/light-gray-plaster.png" type="2d" name="tex-light-gray-plaster"/>
+        <material name="walls_mat" reflectance="0.0" shininess="0.1" specular="0.1" texrepeat="3 3" texture="tex-light-gray-plaster" texuniform="true"/>
         <material name="env_red" rgba="1 0.072272 0.039546 1" />
         <material name="env_blue" rgba="0.024157 0.445201 0.737911 1" />
         <material name="ring_gray" rgba="0.85 0.85 0.85 1" />
-        <mesh name="table_mesh" file="$(find fr3_husky_description)/meshes/table.stl" scale="0.5 0.5 0.4" />
         <mesh name="bowl_mesh" file="$(find fr3_husky_description)/meshes/cup_nohandle.stl" scale="1.2 1.2 0.05" />
+        <mesh name="coffee_body_mesh" file="$(find fr3_husky_description)/meshes/coffee_body.stl" scale="0.01 0.01 0.01"/>
+        <mesh name="coffee_lid_mesh" file="$(find fr3_husky_description)/meshes/coffee_lid.stl" scale="0.01 0.01 0.01"/>
+        <mesh name="coffee_base_mesh" file="$(find fr3_husky_description)/meshes/coffee_base.stl" scale="0.01 0.01 0.01"/>
+        <mesh name="coffee_pod_mesh" file="$(find fr3_husky_description)/meshes/coffee_pod.stl" scale="0.018 0.018 0.018"/>
 
         <xacro:fr3_assets arm_id="$(arg arm_id)"/>
         <xacro:franka_hand_assets/>
@@ -185,27 +200,14 @@
     <!-- ── Worldbody ── -->
     <worldbody>
         <!-- ground plane -->
-        <geom name="floor" type="plane" size="0 0 0.05" material="groundplane" />
-
-        <!-- Environment objects from tmm_mujoco/robots/dual_fr3_husky_env.xml -->
-        <geom name="table" type="mesh" mesh="table_mesh" material="table_brown" pos="1 -0.3 0" />
-        <body name="blue_bowl_body" pos="0.68 -0.6 0.555">
-            <geom name="blue_bowl_geom" type="mesh" mesh="bowl_mesh" material="env_blue" mass="0.2" />
-        </body>
-        <body name="red_bowl_body" pos="0.68 0.0 0.555">
-            <geom name="red_bowl_geom" type="mesh" mesh="bowl_mesh" material="env_red" mass="0.2" />
-        </body>
-        <body name="blue_cylinder_body" pos="0.68 -0.3 0.56">
-            <freejoint name="blue_cylinder_free" />
-            <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="env_blue" mass="0.05" />
-            <!-- Square ring fixed to the cylinder top. Ring plane is X-Z, so the hole normal is global Y. -->
-            <!-- <geom name="blue_cylinder_ring_top" type="box" pos="0 0 0.105" size="0.04 0.005 0.005" material="ring_gray" mass="0.005" />
-            <geom name="blue_cylinder_ring_bottom" type="box" pos="0 0 0.035" size="0.04 0.005 0.005" material="ring_gray" mass="0.005" />
-            <geom name="blue_cylinder_ring_left" type="box" pos="-0.035 0 0.07" size="0.005 0.005 0.035" material="ring_gray" mass="0.005" />
-            <geom name="blue_cylinder_ring_right" type="box" pos="0.035 0 0.07" size="0.005 0.005 0.035" material="ring_gray" mass="0.005" /> -->
-            <!-- <geom name="blue_cylinder_handle" type="box" pos="0 0 0.05" size="0.02 0.002 0.02" material="env_blue" mass="0.005" /> -->
-
-        </body>
+        <geom name="floor" type="plane" size="0 0 0.05" material="floorplane" />
+        <camera name="front_overview"
+                mode="fixed"
+               pos="1.15 -0.25 1.15"
+                euler="0 0.9 1.57" 
+                fovy="55"
+                resolution="640 480" />
+        <xacro:coffee_scene/>
 
         <body name="root" pos="0 0 0">
             <joint name="world_joint" type="free" stiffness="0" damping="0" frictionloss="0" armature="0" />
@@ -243,11 +245,16 @@
     </worldbody>
 
     <equality>
-        <weld name="weld_blue_right_tcp" body1="right_fr3_hand_tcp" body2="blue_cylinder_body"
+        <weld name="weld_right_tcp" body1="right_fr3_hand_tcp" body2="obj"
               active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
-        <weld name="weld_blue_left_tcp" body1="left_fr3_hand_tcp" body2="blue_cylinder_body"
+        <weld name="weld_left_tcp" body1="left_fr3_hand_tcp" body2="obj"
               active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
     </equality>
+
+    <sensor>
+        <force name="right_fr3_hand_tcp_force" site="right_fr3_hand_tcp_ft_site"/>
+        <torque name="right_fr3_hand_tcp_torque" site="right_fr3_hand_tcp_ft_site"/>
+    </sensor>
 
     <!-- Wheel actuators -->
     <xacro:husky_wheel_actuator prefix="" as_two_wheels="false"/>
