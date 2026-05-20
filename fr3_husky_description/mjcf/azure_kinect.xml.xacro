@@ -99,11 +99,11 @@
             <body name="${prefix}_azure_depth_link"
                   pos="-0.032033 -0.002135 0.003748"
                   euler="-0.102789 -0.004858 0.000011">
-                <camera name="${prefix}_azure_depth"
+                <!-- <camera name="${prefix}_azure_depth"
                         resolution="${depth_width} ${depth_height}"
                         sensorsize="1 1"
                         focalpixel="${fx_d} ${fy_d}"
-                        euler="${pi} 0 0"/>
+                        euler="${pi} 0 0"/> -->
             </body>
 
             <!--

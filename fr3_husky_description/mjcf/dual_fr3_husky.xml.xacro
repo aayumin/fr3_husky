@@ -38,14 +38,14 @@
     <!-- RealSense D435i resolution -->
     <xacro:arg name="d435i_color_width"  default="1280"/>
     <xacro:arg name="d435i_color_height" default="720"/>
-    <xacro:arg name="d435i_depth_width"  default="848"/>
-    <xacro:arg name="d435i_depth_height" default="480"/>
+    <xacro:arg name="d435i_depth_width"  default="0"/>
+    <xacro:arg name="d435i_depth_height" default="0"/>
 
     <!-- Azure Kinect DK resolution -->
     <xacro:arg name="azure_color_width"  default="1920"/>
     <xacro:arg name="azure_color_height" default="1080"/>
-    <xacro:arg name="azure_depth_width"  default="640"/>
-    <xacro:arg name="azure_depth_height" default="576"/>
+    <xacro:arg name="azure_depth_width"  default="0"/>
+    <xacro:arg name="azure_depth_height" default="0"/>
     <!-- ============================================================= -->
     <xacro:arg name="arm_id" default="fr3" />
     <xacro:property name="arm_ids_str" value="fr3 fr3" />
