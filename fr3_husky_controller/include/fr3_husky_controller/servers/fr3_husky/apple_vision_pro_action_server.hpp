@@ -75,6 +75,7 @@ private:
     // remove
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr tmm_mediapipe_sub_;
     void subPoseCallback2(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+    int dbg_cnt = 0;
 
 
     void subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg);

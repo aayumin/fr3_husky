@@ -320,6 +320,8 @@ void AppleVisionPro::onGoalAccepted(const ActionT::Goal& goal)
 
 void AppleVisionPro::onStart()
 {
+
+    dbg_cnt = 0;
     {
         std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
         for(auto& tracker_pose : controller_poses_) tracker_pose.setIdentity();
@@ -380,7 +382,7 @@ void AppleVisionPro::onStart()
 AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
 
-    static int dbg_cnt = 0;
+    
     dbg_cnt++;
 
 
@@ -524,15 +526,9 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
         {   
 
 
-            const bool head_tracker_valid =
-                tracker_pose_valid_.size() == NUM_TRACKERS &&
-                tracker_pose_valid_[IDX_HEAD_CON];
-
-            const bool left_tracker_valid =
-                head_tracker_valid && tracker_pose_valid_[IDX_LEFT_CON];
-
-            const bool right_tracker_valid =
-                head_tracker_valid && tracker_pose_valid_[IDX_RIGHT_CON];
+            const bool head_tracker_valid = tracker_pose_valid_.size() == NUM_TRACKERS && tracker_pose_valid_[IDX_HEAD_CON];
+            const bool left_tracker_valid = head_tracker_valid && tracker_pose_valid_[IDX_LEFT_CON];
+            const bool right_tracker_valid = head_tracker_valid && tracker_pose_valid_[IDX_RIGHT_CON];
 
             if ((left_tracker_valid || right_tracker_valid) &&
                 control_start_time_ >= 0.0 &&
@@ -743,11 +739,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 
         
-        if (dbg_cnt % 250 == 0) {
-            std::cout <<  "left x_desired : \n" << ee_data_[left_controller_ee_name_].x_desired.matrix() << std::endl;
-            std::cout <<  "left xdot_desired : \n" << ee_data_[left_controller_ee_name_].xdot_desired.transpose() << std::endl;
-            std::cout << "==========================" << std::endl;
-        }
+        // if (dbg_cnt % 250 == 0) {
+        //     std::cout <<  "left x_desired : \n" << ee_data_[left_controller_ee_name_].x_desired.matrix() << std::endl;
+        //     std::cout <<  "left xdot_desired : \n" << ee_data_[left_controller_ee_name_].xdot_desired.transpose() << std::endl;
+        //     std::cout << "==========================" << std::endl;
+        // }
     
         if(!right_controller_ee_name_.empty()) // right AVP controller
         {
@@ -904,24 +900,35 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
 
-                if (dbg_cnt % 250 == 0) {
-                    
 
-                    std::cout << "curr right (Rot) : \n" << controller_poses_local[IDX_RIGHT_CON].linear() << std::endl;
-                    std::cout << "init right (Rot) : \n" << controller_poses_init_[IDX_RIGHT_CON].linear() << std::endl;
+
+                if (dbg_cnt % 250 == 0) {
+                    std::cout << "curr left  cont : " << controller_poses_local[IDX_LEFT_CON].translation().transpose() << std::endl;
+                    std::cout << "init left  cont : " << controller_poses_init_[IDX_LEFT_CON].translation().transpose() << std::endl;
                     std::cout << " ------------------------------ " << std::endl;
-                    std::cout << "curr x ori : \n" << ee_data_[right_controller_ee_name_].x.linear() << std::endl;
-                    std::cout << "init x ori : \n" << ee_data_[right_controller_ee_name_].x_init.linear() << std::endl;
-                    std::cout << " =================================== " << std::endl;
                     std::cout << "curr right cont : " << controller_poses_local[IDX_RIGHT_CON].translation().transpose() << std::endl;
                     std::cout << "init right cont : " << controller_poses_init_[IDX_RIGHT_CON].translation().transpose() << std::endl;
-                    std::cout << " ------------------------------ " << std::endl;
-                    std::cout << "raw_target : " << raw_target.translation().transpose() << std::endl;
-                    std::cout << "smooth_target : " << smooth_target.translation().transpose() << std::endl;
-                    std::cout << "current x pos : " << ee_data_[right_controller_ee_name_].x.translation().transpose() << std::endl;
-                    std::cout << "init x pos : " << ee_data_[right_controller_ee_name_].x_init.translation().transpose() << std::endl;
-                    std::cout << " =================================== \n\n\n" << std::endl;
                 }
+
+
+                // if (dbg_cnt % 250 == 0) {
+                    
+
+                //     std::cout << "curr right (Rot) : \n" << controller_poses_local[IDX_RIGHT_CON].linear() << std::endl;
+                //     std::cout << "init right (Rot) : \n" << controller_poses_init_[IDX_RIGHT_CON].linear() << std::endl;
+                //     std::cout << " ------------------------------ " << std::endl;
+                //     std::cout << "curr x ori : \n" << ee_data_[right_controller_ee_name_].x.linear() << std::endl;
+                //     std::cout << "init x ori : \n" << ee_data_[right_controller_ee_name_].x_init.linear() << std::endl;
+                //     std::cout << " =================================== " << std::endl;
+                //     std::cout << "curr right cont : " << controller_poses_local[IDX_RIGHT_CON].translation().transpose() << std::endl;
+                //     std::cout << "init right cont : " << controller_poses_init_[IDX_RIGHT_CON].translation().transpose() << std::endl;
+                //     std::cout << " ------------------------------ " << std::endl;
+                //     std::cout << "raw_target : " << raw_target.translation().transpose() << std::endl;
+                //     std::cout << "smooth_target : " << smooth_target.translation().transpose() << std::endl;
+                //     std::cout << "current x pos : " << ee_data_[right_controller_ee_name_].x.translation().transpose() << std::endl;
+                //     std::cout << "init x pos : " << ee_data_[right_controller_ee_name_].x_init.translation().transpose() << std::endl;
+                //     std::cout << " =================================== \n\n\n" << std::endl;
+                // }
             
 
                 
@@ -1116,7 +1123,9 @@ AppleVisionPro::ResultPtr AppleVisionPro::makeResult(StopReason reason)
 
 
 void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
-{   
+{       
+    static int dbg_cnt2 = 0;
+    dbg_cnt2++;
 
     if(msg->poses.size() != NUM_TRACKERS)
     {
@@ -1135,6 +1144,13 @@ void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::Shared
                 std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
                 controller_poses_[i].translation() = position;
                 controller_poses_[i].linear() = orientation;
+            }
+
+
+
+            // remove
+            if (dbg_cnt2 % 15 == 0) {
+                std::cout << "[" << dbg_cnt << "] sub callback:  " << position.transpose() << std::endl;
             }
 
             // pose valid
