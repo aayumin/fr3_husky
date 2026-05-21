@@ -218,6 +218,7 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
 
     controller_poses_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
     controller_poses_init_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
+    prev_controller_poses_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
     gesture_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_GESTURES, false));
     prev_gesture_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_GESTURES, false));
 
@@ -311,6 +312,8 @@ void AppleVisionPro::onGoalAccepted(const ActionT::Goal& goal)
     control_mode_ = goal.mode;
     left_controller_ee_name_ = goal.left_controller_ee_name;
     right_controller_ee_name_ = goal.right_controller_ee_name;
+    left_tracking_mode_on_ = goal.left_tracking_mode_on;
+    right_tracking_mode_on_ = goal.right_tracking_mode_on;
     move_ori_ = goal.move_orientation;
     controller_pos_multiplier_ = static_cast<double>(goal.controller_pos_multiplier);
     controller_ori_multiplier_ = static_cast<double>(goal.controller_ori_multiplier);
@@ -336,8 +339,8 @@ void AppleVisionPro::onStart()
     }
 
     for(auto& prev_gesture_state : prev_gesture_states_) prev_gesture_state = std::vector<bool>(NUM_GESTURES, false);
-    is_tracking_mode_on_.assign(NUM_CONTROLLERS, false);
-    is_initialize_mode_on_ = false;
+    is_realtime_tracking_started_.assign(NUM_CONTROLLERS, false);
+    is_home_mode_on_ = false;
     is_gripper_mode_on_.assign(NUM_CONTROLLERS, false);
 
 
@@ -345,11 +348,12 @@ void AppleVisionPro::onStart()
 
 
     // tracking state
+    is_initialized = false;
     auto_tracking_started_ = false;
     tracker_pose_valid_.fill(false);
     is_first_target_left_ = true;
     is_first_target_right_ = true;
-    num_steps = 0;
+    num_steps_for_capture = 0;
 
 
     prev_target_left_ = Eigen::Affine3d::Identity();
@@ -357,7 +361,6 @@ void AppleVisionPro::onStart()
 
     ee_data_.clear();
     waiting_for_jtc_.store(false, std::memory_order_relaxed);
-    control_start_time_ = -1.0; // sentinel: set on first compute() call
     q_init_for_home_ = fr3_husky_model_updater_.q_total_;
 
     if(!left_controller_ee_name_.empty())
@@ -405,21 +408,24 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     }
 
 
-    if (control_start_time_ < 0) 
+    if (!is_initialized) 
     {
-        control_start_time_ = time.seconds();
         q_init_for_home_ = fr3_husky_model_updater_.q_total_;
+        prev_controller_poses_[IDX_LEFT_CON].matrix() = controller_poses_local[IDX_LEFT_CON].matrix();
+        prev_controller_poses_[IDX_RIGHT_CON].matrix() = controller_poses_local[IDX_RIGHT_CON].matrix();
+        prev_controller_poses_[IDX_HEAD_CON].matrix() = controller_poses_local[IDX_HEAD_CON].matrix();
+        is_initialized = true;
     }
 
     // Initialize mode
     {
-        if (!is_initialize_mode_on_)
+        if (!is_home_mode_on_)
         {
             // if "a" button on the AVP controller is pressed
             if ((!prev_gesture_states_[IDX_LEFT_CON][IDX_PINCH_SNAP_LEFT_GESTURE]  && gesture_states_local[IDX_LEFT_CON][IDX_PINCH_SNAP_LEFT_GESTURE]) ||
                 (!prev_gesture_states_[IDX_RIGHT_CON][IDX_PINCH_SNAP_LEFT_GESTURE] && gesture_states_local[IDX_RIGHT_CON][IDX_PINCH_SNAP_LEFT_GESTURE]))
             {
-                is_initialize_mode_on_ = true;
+                is_home_mode_on_ = true;
 
                 MoveToJointAction::Goal mtj_goal;
                 for (const auto& robot_name : fr3_husky_model_updater_.robot_names_)
@@ -519,61 +525,72 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
         }
     }
 
+    // head frame :  RGB (right, up,  backward)
+    // left frame :  RGB (forward, down, left)
+    // right frame : RGB (backward, up, left)
+
+    
     // Manipulator control
     {   
 
         if (!auto_tracking_started_)
         {   
 
+            bool tracker_value_valid = tracker_pose_valid_[IDX_HEAD_CON] && tracker_pose_valid_[IDX_LEFT_CON] &&  tracker_pose_valid_[IDX_RIGHT_CON];
 
-            const bool head_tracker_valid = tracker_pose_valid_.size() == NUM_TRACKERS && tracker_pose_valid_[IDX_HEAD_CON];
-            const bool left_tracker_valid = head_tracker_valid && tracker_pose_valid_[IDX_LEFT_CON];
-            const bool right_tracker_valid = head_tracker_valid && tracker_pose_valid_[IDX_RIGHT_CON];
+            if (tracker_value_valid)  // valid 한 값을 받으면, 
+            {   
 
-            if ((left_tracker_valid || right_tracker_valid) &&
-                control_start_time_ >= 0.0 &&
-                (time.seconds() - control_start_time_) >= avp_tracking_enable_delay_)
-            {
+                bool check_stable_left = checkPoseDifference(prev_controller_poses_[IDX_LEFT_CON], controller_poses_local[IDX_LEFT_CON], 
+                    min_realtime_human_noise_p, max_noise_for_stable_p, min_realtime_human_noise_r, max_noise_for_stable_r);
+                bool check_stable_right = checkPoseDifference(prev_controller_poses_[IDX_RIGHT_CON], controller_poses_local[IDX_RIGHT_CON], 
+                    min_realtime_human_noise_p, max_noise_for_stable_p, min_realtime_human_noise_r, max_noise_for_stable_r);
+                bool check_stable_head = checkPoseDifference(prev_controller_poses_[IDX_HEAD_CON], controller_poses_local[IDX_HEAD_CON], 
+                    min_realtime_human_noise_p, max_noise_for_stable_p, min_realtime_human_noise_r, max_noise_for_stable_r);
 
-                num_steps++;
-                if (num_steps >= steps_until_capture_init_tracker) 
+                // 실시간 tracking 중이면, 그리고 안정적인 자세 유지 중이면
+                if (check_stable_left && check_stable_right && check_stable_head) num_steps_for_capture++;
+                else num_steps_for_capture = 0;  // 아니면 다시 카운트 초기화.
+
+                prev_controller_poses_[IDX_LEFT_CON].matrix() = controller_poses_local[IDX_LEFT_CON].matrix();
+                prev_controller_poses_[IDX_RIGHT_CON].matrix() = controller_poses_local[IDX_RIGHT_CON].matrix();
+                prev_controller_poses_[IDX_HEAD_CON].matrix() = controller_poses_local[IDX_HEAD_CON].matrix();
+
+
+                if (num_steps_for_capture >= steps_until_capture_init_tracker)   // 일정 스텝 이상, 실시간 tracking 중에 안정적 자세 유지하면,
                 {
-
-                    RCLCPP_INFO(node_->get_logger(),
-                                "[%s] Auto tracking ON after %.2f sec. left=%s right=%s",
-                                name_.c_str(),
-                                avp_tracking_enable_delay_,
-                                left_tracker_valid ? "true" : "false",
-                                right_tracker_valid ? "true" : "false");
-
-
-
 
                     // Head init is common
                     controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
                     
                     
                     // Left hand / left EEF
-                    is_tracking_mode_on_[IDX_LEFT_CON] = left_tracker_valid;
-                    if (left_tracker_valid && !left_controller_ee_name_.empty())
+                    is_realtime_tracking_started_[IDX_LEFT_CON] = left_tracking_mode_on_;
+                    if (!left_controller_ee_name_.empty())
                     {
                         controller_poses_init_[IDX_LEFT_CON] = controller_poses_local[IDX_LEFT_CON];
                         ee_data_[left_controller_ee_name_].setInit();
                         is_first_target_left_ = true;
                     }
 
-                    // head frame :  RGB (right, up,  backward)
-                    // left frame :  RGB (forward, down, left)
-                    // right frame : RGB (backward, up, left)
 
                     // Right hand / right EEF
-                    is_tracking_mode_on_[IDX_RIGHT_CON] = right_tracker_valid;
-                    if (right_tracker_valid && !right_controller_ee_name_.empty())
+                    is_realtime_tracking_started_[IDX_RIGHT_CON] = right_tracking_mode_on_;
+                    if (!right_controller_ee_name_.empty())
                     {
                         controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
                         ee_data_[right_controller_ee_name_].setInit();
                         is_first_target_right_ = true;
                     }
+
+
+                    RCLCPP_INFO(node_->get_logger(),
+                                "[%s] Auto tracking ON. left=%s right=%s",
+                                name_.c_str(),
+                                left_tracking_mode_on_ ? "true" : "false",
+                                right_tracking_mode_on_ ? "true" : "false");
+
+
 
                     auto_tracking_started_ = true;
                 }
@@ -590,7 +607,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 
 
-            if (is_tracking_mode_on_[IDX_LEFT_CON])
+            if (is_realtime_tracking_started_[IDX_LEFT_CON])
             {
                 if (false)
                 {
@@ -747,7 +764,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             target_pose_diff.setIdentity();
             target_vel.setZero();
 
-            if (is_tracking_mode_on_[IDX_RIGHT_CON])
+            if (is_realtime_tracking_started_[IDX_RIGHT_CON])
             {
                 if (false)
                 {
@@ -1030,6 +1047,20 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
         return ComputeResult::RUNNING;
     }
 
+    bool AppleVisionPro::checkPoseDifference(Eigen::Affine3d prev_pose, Eigen::Affine3d curr_pose, double min_p_diff = -1.0, double max_p_diff = -1.0, double min_angle_diff = -1.0, double max_angle_diff = -1.0) {
+        double pos_norm = (curr_pose.translation() - prev_pose.translation()).norm();
+        Eigen::Matrix3d rot_diff = prev_pose.linear().transpose() * curr_pose.linear();
+        double trace = std::max(-1.0, std::min(3.0, rot_diff.trace()));
+        double angle_norm = std::acos((trace - 1.0) / 2.0);
+
+        if (min_p_diff >= 0.0 && pos_norm < min_p_diff) return false;
+        if (max_p_diff >= 0.0 && pos_norm > max_p_diff) return false;
+        if (min_angle_diff >= 0.0 && angle_norm < min_angle_diff) return false;
+        if (max_angle_diff >= 0.0 && angle_norm > max_angle_diff) return false;
+        return true;
+    }
+
+
 Eigen::Vector6d AppleVisionPro::computeTargetVelocity(
     const Eigen::Affine3d& prev,
     const Eigen::Affine3d& cur,
@@ -1110,8 +1141,6 @@ void AppleVisionPro::subPoseCallback(const geometry_msgs::msg::PoseArray::Shared
                 controller_poses_[i].translation() = position;
                 controller_poses_[i].linear() = orientation;
             }
-
-
 
             // pose valid
             tracker_pose_valid_[i] = true;

@@ -46,6 +46,8 @@ public:
     using StopReason = typename Base::StopReason;
     using ResultPtr = typename Base::ResultPtr;
 
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    
     AppleVisionPro(const std::string& name, const NodePtr& node, ModelUpdaterBase& model_updater);
     ~AppleVisionPro() override = default;
 
@@ -83,9 +85,16 @@ private:
     std::vector<std::vector<bool>> gesture_states_;       // [left, right] 
     std::vector<std::vector<bool>> prev_gesture_states_;  // previous gesture states for edge detection
 
-    // states for ...
-    std::vector<bool> is_tracking_mode_on_{false, false};
-    bool is_initialize_mode_on_{false};
+
+    // tracking state
+    bool left_tracking_mode_on_;   // Action Goal 에서 OnOff
+    bool right_tracking_mode_on_;  // Action Goal 에서 OnOff
+    std::array<bool, NUM_TRACKERS> tracker_pose_valid_{{false, false, false}};  // 한번이라도 tracker 값을 받았는지
+    std::vector<bool> is_realtime_tracking_started_{false, false};  // 필요조건 만족해서 실제 실시간 tracking 시작했는지
+    bool auto_tracking_started_ = false;                   
+
+    // states
+    bool is_home_mode_on_{false};
     std::vector<bool> is_gripper_mode_on_{false, false};
     
     // robot data
@@ -98,24 +107,24 @@ private:
     bool is_first_target_left_ = true;
     bool is_first_target_right_ = true;
     Eigen::Affine3d smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt);
-
-    // double max_linear_vel_ = 0.5;   // m/s
-    // double max_angular_vel_ = 1.0;  // rad/s
-    // double max_linear_vel_ = 0.2;   // m/s
-    // double max_angular_vel_ = 0.5;  // rad/s
     double max_linear_vel_ = 0.1;   // m/s
     double max_angular_vel_ = 0.5;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
-
     Eigen::Vector6d computeTargetVelocity(const Eigen::Affine3d& prev, const Eigen::Affine3d& cur, double dt);
 
 
-    // tracking state
-    bool auto_tracking_started_ = false;
-    std::array<bool, NUM_TRACKERS> tracker_pose_valid_{{false, false, false}};
-    double avp_tracking_enable_delay_ = 5.0;
+    // initialization
+    bool is_initialized = false;
     int steps_until_capture_init_tracker = 50;
-    int num_steps = 0;
+    int num_steps_for_capture = 0;
+    double min_realtime_human_noise_p = 1e-6;
+    double min_realtime_human_noise_r = 1e-4;
+    double max_noise_for_stable_p = 0.02;
+    double max_noise_for_stable_r = 0.12;
+    std::vector<Eigen::Affine3d> prev_controller_poses_;      // left, right, head
+    bool checkPoseDifference(Eigen::Affine3d prev_pose, Eigen::Affine3d curr_pose, double min_p_diff, double max_p_diff, double min_angle_diff, double max_angle_diff);
+
+
 
     Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};
     Eigen::Affine3d world_from_base_cur_{Eigen::Affine3d::Identity()};
@@ -138,10 +147,11 @@ private:
     std::mutex gesture_state_mutex_;
 
     // null space HomePose cubic
-    double control_start_time_{0.0};
     Eigen::VectorXd q_init_for_home_; // joint config snapshot at manipulator mode start (for cubic null space)
 
-    // initialize mode: -> send goal to fr3_move_to_joint
+
+
+    // home pose mode: -> send goal to fr3_move_to_joint
     const Eigen::Vector<double, FR3_DOF> HomePose{0., -0.785, 0.0, -2.356, 0.0, 1.571, 0.785};
     ActionT::Goal saved_avp_goal_{};  // saved goal params for auto-resume after init
 
