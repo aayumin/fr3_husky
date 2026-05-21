@@ -205,13 +205,16 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
     rclcpp::QoS tracker_pose_qos(1);
     tracker_pose_qos.best_effort();
     tracker_pose_qos.durability_volatile();
+    rclcpp::QoS gesture_qos(10);
+    gesture_qos.best_effort();
+    gesture_qos.durability_volatile();
     pose_sub_ = node_->create_subscription<geometry_msgs::msg::PoseArray>(
         "tracker_pose",
         tracker_pose_qos,
         // rclcpp::SensorDataQoS().keep_last(1),  // best_effort + volatile + keeplast(1)
         std::bind(&AppleVisionPro::subPoseCallback, this, std::placeholders::_1));
-    l_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("lhand_gesture", 1, std::bind(&AppleVisionPro::subLGestureCallback, this, std::placeholders::_1));
-    r_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("rhand_gesture", 1, std::bind(&AppleVisionPro::subRGestureCallback, this, std::placeholders::_1));
+    l_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("lhand_gesture", gesture_qos, std::bind(&AppleVisionPro::subLGestureCallback, this, std::placeholders::_1));
+    r_gesture_state_sub_ = node_->create_subscription<std_msgs::msg::Int32MultiArray>("rhand_gesture", gesture_qos, std::bind(&AppleVisionPro::subRGestureCallback, this, std::placeholders::_1));
 
     controller_poses_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
     controller_poses_init_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
@@ -382,8 +385,6 @@ void AppleVisionPro::onStart()
 AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
 
-    
-    
 
     for(auto& [ee_name, ee_data] : ee_data_)
     {
@@ -580,7 +581,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             }
         }
         
-        
         if(!left_controller_ee_name_.empty()) // left AVP controller
         {
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
@@ -673,10 +673,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         double angle = aa_hand.angle();
 
                         // const double ROT_EPS = 0.05;   // ~3 deg
-                        // if (std::abs(angle) < ROT_EPS)
-                        // {
-                        //     angle = 0.0;
-                        // }
+                        const double ROT_EPS = 0.08;   
+                        if (std::abs(angle) < ROT_EPS)
+                        {
+                            angle = 0.0;
+                        }
 
                         // const double MAX_ROT_DELTA = 0.30;  // ~34 deg
                         // if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
@@ -837,10 +838,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         double angle = aa_hand.angle();
 
                         // const double ROT_EPS = 0.05;   // ~3 deg
-                        // if (std::abs(angle) < ROT_EPS)
-                        // {
-                        //     angle = 0.0;
-                        // }
+                        const double ROT_EPS = 0.08;  
+                        if (std::abs(angle) < ROT_EPS)
+                        {
+                            angle = 0.0;
+                        }
 
                         // const double MAX_ROT_DELTA = 0.30;  // ~34 deg
                         // if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;

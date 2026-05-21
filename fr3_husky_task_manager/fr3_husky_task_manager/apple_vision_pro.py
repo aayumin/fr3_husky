@@ -38,8 +38,8 @@ class AppleVisionProClient(Node):
         goal.right_controller_ee_name = 'right_fr3_hand_tcp'
         goal.move_orientation = True
         goal.controller_pos_multiplier = 1.0
-        # goal.controller_ori_multiplier = 1.0
-        goal.controller_ori_multiplier = 1.5
+        goal.controller_ori_multiplier = 1.0
+        # goal.controller_ori_multiplier = 1.5
 
         self.get_logger().info('Sending AppleVisionPro goal')
         future = self._client.send_goal_async(goal)
