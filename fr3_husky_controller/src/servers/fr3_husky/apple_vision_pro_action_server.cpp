@@ -218,7 +218,6 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
 
     controller_poses_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
     controller_poses_init_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
-    prev_controller_poses_.assign(NUM_TRACKERS, Eigen::Affine3d::Identity());
     gesture_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_GESTURES, false));
     prev_gesture_states_.assign(NUM_CONTROLLERS, std::vector<bool>(NUM_GESTURES, false));
 
@@ -354,6 +353,7 @@ void AppleVisionPro::onStart()
     is_first_target_left_ = true;
     is_first_target_right_ = true;
     num_steps_for_capture = 0;
+    total_elapsed_steps = 0;
 
 
     prev_target_left_ = Eigen::Affine3d::Identity();
@@ -388,6 +388,7 @@ void AppleVisionPro::onStart()
 AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
 
+    total_elapsed_steps++;
 
     for(auto& [ee_name, ee_data] : ee_data_)
     {
@@ -411,9 +412,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     if (!is_initialized) 
     {
         q_init_for_home_ = fr3_husky_model_updater_.q_total_;
-        prev_controller_poses_[IDX_LEFT_CON].matrix() = controller_poses_local[IDX_LEFT_CON].matrix();
-        prev_controller_poses_[IDX_RIGHT_CON].matrix() = controller_poses_local[IDX_RIGHT_CON].matrix();
-        prev_controller_poses_[IDX_HEAD_CON].matrix() = controller_poses_local[IDX_HEAD_CON].matrix();
         is_initialized = true;
     }
 
@@ -541,20 +539,21 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             if (tracker_value_valid)  // valid 한 값을 받으면, 
             {   
 
-                bool check_stable_left = checkPoseDifference(prev_controller_poses_[IDX_LEFT_CON], controller_poses_local[IDX_LEFT_CON], 
-                    min_realtime_human_noise_p, max_noise_for_stable_p, min_realtime_human_noise_r, max_noise_for_stable_r);
-                bool check_stable_right = checkPoseDifference(prev_controller_poses_[IDX_RIGHT_CON], controller_poses_local[IDX_RIGHT_CON], 
-                    min_realtime_human_noise_p, max_noise_for_stable_p, min_realtime_human_noise_r, max_noise_for_stable_r);
-                bool check_stable_head = checkPoseDifference(prev_controller_poses_[IDX_HEAD_CON], controller_poses_local[IDX_HEAD_CON], 
-                    min_realtime_human_noise_p, max_noise_for_stable_p, min_realtime_human_noise_r, max_noise_for_stable_r);
+                const int window_size = std::max(2, static_cast<int>(stable_window_sec_ / fr3_husky_model_updater_.dt_));
+                left_pose_window_.push_back(controller_poses_local[IDX_LEFT_CON]);
+                right_pose_window_.push_back(controller_poses_local[IDX_RIGHT_CON]);
+                head_pose_window_.push_back(controller_poses_local[IDX_HEAD_CON]);
+                while (left_pose_window_.size() > static_cast<size_t>(window_size)) left_pose_window_.pop_front();
+                while (right_pose_window_.size() > static_cast<size_t>(window_size)) right_pose_window_.pop_front();
+                while (head_pose_window_.size() > static_cast<size_t>(window_size)) head_pose_window_.pop_front();
 
+                const bool window_ready = left_pose_window_.size() >= static_cast<size_t>(window_size) && right_pose_window_.size() >= static_cast<size_t>(window_size) && head_pose_window_.size() >= static_cast<size_t>(window_size);
+                const bool stable_for_capture = window_ready && isPoseWindowLiveAndStable(left_pose_window_) && isPoseWindowLiveAndStable(right_pose_window_) && isPoseWindowLiveAndStable(head_pose_window_);
+                
                 // 실시간 tracking 중이면, 그리고 안정적인 자세 유지 중이면
-                if (check_stable_left && check_stable_right && check_stable_head) num_steps_for_capture++;
-                else num_steps_for_capture = 0;  // 아니면 다시 카운트 초기화.
+                if (stable_for_capture) ++num_steps_for_capture;
+                else num_steps_for_capture = 0; // 아니면 다시 카운트 초기화.
 
-                prev_controller_poses_[IDX_LEFT_CON].matrix() = controller_poses_local[IDX_LEFT_CON].matrix();
-                prev_controller_poses_[IDX_RIGHT_CON].matrix() = controller_poses_local[IDX_RIGHT_CON].matrix();
-                prev_controller_poses_[IDX_HEAD_CON].matrix() = controller_poses_local[IDX_HEAD_CON].matrix();
 
 
                 if (num_steps_for_capture >= steps_until_capture_init_tracker)   // 일정 스텝 이상, 실시간 tracking 중에 안정적 자세 유지하면,
@@ -1047,18 +1046,46 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
         return ComputeResult::RUNNING;
     }
 
-    bool AppleVisionPro::checkPoseDifference(Eigen::Affine3d prev_pose, Eigen::Affine3d curr_pose, double min_p_diff = -1.0, double max_p_diff = -1.0, double min_angle_diff = -1.0, double max_angle_diff = -1.0) {
-        double pos_norm = (curr_pose.translation() - prev_pose.translation()).norm();
-        Eigen::Matrix3d rot_diff = prev_pose.linear().transpose() * curr_pose.linear();
-        double trace = std::max(-1.0, std::min(3.0, rot_diff.trace()));
-        double angle_norm = std::acos((trace - 1.0) / 2.0);
 
-        if (min_p_diff >= 0.0 && pos_norm < min_p_diff) return false;
-        if (max_p_diff >= 0.0 && pos_norm > max_p_diff) return false;
-        if (min_angle_diff >= 0.0 && angle_norm < min_angle_diff) return false;
-        if (max_angle_diff >= 0.0 && angle_norm > max_angle_diff) return false;
-        return true;
+double AppleVisionPro::rotationDiff(const Eigen::Matrix3d& R_a, const Eigen::Matrix3d& R_b)
+{
+    const Eigen::Matrix3d R_diff = R_a.transpose() * R_b;
+    double c = (R_diff.trace() - 1.0) * 0.5;
+    c = std::clamp(c, -1.0, 1.0);
+    return std::acos(c);
+}
+
+bool AppleVisionPro::isPoseWindowLiveAndStable(const std::deque<Eigen::Affine3d>& poses)
+{
+    if (poses.size() < 2) return false;
+
+    int live_updates = 0;
+    Eigen::Vector3d p_min = poses.front().translation();
+    Eigen::Vector3d p_max = poses.front().translation();
+    double max_rot_range = 0.0;
+
+    const Eigen::Matrix3d R0 = poses.front().linear();
+
+    for (size_t i = 1; i < poses.size(); ++i)
+    {
+        const double dp = (poses[i].translation() - poses[i - 1].translation()).norm();
+        const double dr = rotationDiff(poses[i - 1].linear(), poses[i].linear());
+        if (dp > min_live_p_diff_ || dr > min_live_r_diff_) ++live_updates;
     }
+
+    for (const auto& T : poses)
+    {
+        p_min = p_min.cwiseMin(T.translation());
+        p_max = p_max.cwiseMax(T.translation());
+        max_rot_range = std::max(max_rot_range, rotationDiff(R0, T.linear()));
+    }
+
+    const double pos_range = (p_max - p_min).norm();
+    const bool live = live_updates >= min_live_updates_in_window_;
+    const bool stable = pos_range < max_stable_p_range_ && max_rot_range < max_stable_r_range_;
+
+    return live && stable;
+}
 
 
 Eigen::Vector6d AppleVisionPro::computeTargetVelocity(

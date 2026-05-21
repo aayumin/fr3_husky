@@ -4,6 +4,9 @@
 #include <atomic>
 #include <memory>
 #include <type_traits>
+#include <deque>
+#include <algorithm>
+#include <cmath>
 
 #include <action_msgs/msg/goal_status.hpp>
 #include <action_msgs/msg/goal_status_array.hpp>
@@ -47,7 +50,7 @@ public:
     using ResultPtr = typename Base::ResultPtr;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    
+
     AppleVisionPro(const std::string& name, const NodePtr& node, ModelUpdaterBase& model_updater);
     ~AppleVisionPro() override = default;
 
@@ -93,6 +96,8 @@ private:
     std::vector<bool> is_realtime_tracking_started_{false, false};  // 필요조건 만족해서 실제 실시간 tracking 시작했는지
     bool auto_tracking_started_ = false;                   
 
+
+
     // states
     bool is_home_mode_on_{false};
     std::vector<bool> is_gripper_mode_on_{false, false};
@@ -117,14 +122,20 @@ private:
     bool is_initialized = false;
     int steps_until_capture_init_tracker = 50;
     int num_steps_for_capture = 0;
-    double min_realtime_human_noise_p = 1e-6;
-    double min_realtime_human_noise_r = 1e-4;
-    double max_noise_for_stable_p = 0.02;
-    double max_noise_for_stable_r = 0.12;
-    std::vector<Eigen::Affine3d> prev_controller_poses_;      // left, right, head
-    bool checkPoseDifference(Eigen::Affine3d prev_pose, Eigen::Affine3d curr_pose, double min_p_diff, double max_p_diff, double min_angle_diff, double max_angle_diff);
+    std::deque<Eigen::Affine3d> left_pose_window_;
+    std::deque<Eigen::Affine3d> right_pose_window_;
+    std::deque<Eigen::Affine3d> head_pose_window_;
+    double stable_window_sec_ = 0.5;
+    int min_live_updates_in_window_ = 5;
+    double min_live_p_diff_ = 1e-7;
+    double min_live_r_diff_ = 1e-7;
+    double max_stable_p_range_ = 0.015;
+    double max_stable_r_range_ = 0.05;
+    bool isPoseWindowLiveAndStable(const std::deque<Eigen::Affine3d>& poses);
+    double rotationDiff(const Eigen::Matrix3d& R_a, const Eigen::Matrix3d& R_b);
 
 
+    int total_elapsed_steps = 0;
 
     Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};
     Eigen::Affine3d world_from_base_cur_{Eigen::Affine3d::Identity()};
