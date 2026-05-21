@@ -195,15 +195,12 @@
         <body name="red_bowl_body" pos="0.68 0.0 0.555">
             <geom name="red_bowl_geom" type="mesh" mesh="bowl_mesh" material="env_red" mass="0.2" />
         </body>
-        <body name="blue_cylinder_body" pos="0.68 -0.3 0.56">
-            <freejoint name="blue_cylinder_free" />
-            <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="env_blue" mass="0.05" />
-            <!-- Square ring fixed to the cylinder top. Ring plane is X-Z, so the hole normal is global Y. -->
-            <!-- <geom name="blue_cylinder_ring_top" type="box" pos="0 0 0.105" size="0.04 0.005 0.005" material="ring_gray" mass="0.005" />
-            <geom name="blue_cylinder_ring_bottom" type="box" pos="0 0 0.035" size="0.04 0.005 0.005" material="ring_gray" mass="0.005" />
-            <geom name="blue_cylinder_ring_left" type="box" pos="-0.035 0 0.07" size="0.005 0.005 0.035" material="ring_gray" mass="0.005" />
-            <geom name="blue_cylinder_ring_right" type="box" pos="0.035 0 0.07" size="0.005 0.005 0.035" material="ring_gray" mass="0.005" /> -->
-            <!-- <geom name="blue_cylinder_handle" type="box" pos="0 0 0.05" size="0.02 0.002 0.02" material="env_blue" mass="0.005" /> -->
+        <body name="obj" pos="0.68 -0.3 0.62">
+            <freejoint name="obj_joint"/>
+            <!-- <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="env_blue" mass="0.05" /> -->
+            <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="env_blue" mass="0.05"  
+                friction="1.0 0.005 0.001" solref="0.02 1"  solimp="0.9 0.95 0.001 0.5 2" />
+            
 
         </body>
 
@@ -243,9 +240,9 @@
     </worldbody>
 
     <equality>
-        <weld name="weld_blue_right_tcp" body1="right_fr3_hand_tcp" body2="blue_cylinder_body"
+        <weld name="weld_right_tcp" body1="right_fr3_hand_tcp" body2="obj"
               active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
-        <weld name="weld_blue_left_tcp" body1="left_fr3_hand_tcp" body2="blue_cylinder_body"
+        <weld name="weld_left_tcp" body1="left_fr3_hand_tcp" body2="obj"
               active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
     </equality>
 

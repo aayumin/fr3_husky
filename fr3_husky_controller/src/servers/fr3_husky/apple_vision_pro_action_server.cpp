@@ -80,8 +80,8 @@ Eigen::Quaterniond averageQuaternionWXYZ(const Eigen::Vector4d& qsum)
 
 // ==================== MUJOCO OBJECT WELD ATTACH / DETACH ====================
 // Predefined in fr3_husky_description/mjcf/dual_fr3_husky.xml.xacro:
-//   weld_blue_right_tcp: right_fr3_hand_tcp <-> blue_cylinder_body
-//   weld_blue_left_tcp:  left_fr3_hand_tcp  <-> blue_cylinder_body
+//   weld_right_tcp: right_fr3_hand_tcp <-> blue_cylinder_body
+//   weld_left_tcp:  left_fr3_hand_tcp  <-> blue_cylinder_body
 // This directly toggles MuJoCo's equality constraint in the shared simulation.
 // ============================================================================
 bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger,
@@ -123,10 +123,10 @@ bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger,
         return false;
     }
 
-    const char* const kWeldName = is_right_controller ? "weld_blue_right_tcp" : "weld_blue_left_tcp";
+    const char* const kWeldName = is_right_controller ? "weld_right_tcp" : "weld_left_tcp";
     const char* const kParentBodyName = is_right_controller ? "right_fr3_hand_tcp" : "left_fr3_hand_tcp";
-    constexpr const char* kChildBodyName = "blue_cylinder_body";
-    constexpr const char* kChildFreeJointName = "blue_cylinder_free";
+    constexpr const char* kChildBodyName = "obj";
+    constexpr const char* kChildFreeJointName = "obj_joint";
 
     const int weld_id = mj_name2id(model, mjOBJ_EQUALITY, kWeldName);
     const int parent_body_id = mj_name2id(model, mjOBJ_BODY, kParentBodyName);

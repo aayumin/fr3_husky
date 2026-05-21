@@ -56,8 +56,8 @@ bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger, bool active
 
     constexpr const char* kWeldName = "weld_blue_right_tcp";
     constexpr const char* kParentBodyName = "right_fr3_hand_tcp";
-    constexpr const char* kChildBodyName = "blue_cylinder_body";
-    constexpr const char* kChildFreeJointName = "blue_cylinder_free";
+    constexpr const char* kChildBodyName = "obj";
+    constexpr const char* kChildFreeJointName = "obj_joint";
 
     const int weld_id = mj_name2id(model, mjOBJ_EQUALITY, kWeldName);
     const int parent_body_id = mj_name2id(model, mjOBJ_BODY, kParentBodyName);
