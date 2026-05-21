@@ -92,11 +92,11 @@ def _launch_setup(context, *args, **kwargs):
     # URDF + MJCF paths 
     if is_dual:
         urdf_path = os.path.join(pkg_desc, 'robots', 'dual_fr3_husky.urdf.xacro')
-        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
+        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_square.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threading.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threepieceassembly.xml.xacro')
-        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_yaw.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_yaw.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_coffee.xml.xacro')
 
         xacro_mappings = {

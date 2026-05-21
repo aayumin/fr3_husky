@@ -99,8 +99,12 @@ private:
     bool is_first_target_right_ = true;
     Eigen::Affine3d smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt);
 
-    double max_linear_vel_ = 0.5;   // m/s
-    double max_angular_vel_ = 1.0;  // rad/s
+    // double max_linear_vel_ = 0.5;   // m/s
+    // double max_angular_vel_ = 1.0;  // rad/s
+    // double max_linear_vel_ = 0.2;   // m/s
+    // double max_angular_vel_ = 0.5;  // rad/s
+    double max_linear_vel_ = 0.1;   // m/s
+    double max_angular_vel_ = 0.5;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
 
     Eigen::Vector6d computeTargetVelocity(const Eigen::Affine3d& prev, const Eigen::Affine3d& cur, double dt);

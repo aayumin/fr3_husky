@@ -633,13 +633,13 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     //         delta_avp(k) = 0.0;
                     // }
 
-                    // // Clamp
-                    // const double MAX_POS_DELTA = 0.5;
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
-                    //     if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
-                    // }
+                    // Clamp
+                    const double MAX_POS_DELTA = 0.2;
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
+                        if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
+                    }
 
                     // Map AVP frame -> base frame
                     const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
@@ -678,9 +678,9 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         //     angle = 0.0;
                         // }
 
-                        // const double MAX_ROT_DELTA = 0.60;  // ~34 deg
+                        // const double MAX_ROT_DELTA = 0.30;  // ~34 deg
                         // if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
-                        // // if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;  // angle value of AngleAxisd : 0 ~ pi
+                        // if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;  // angle value of AngleAxisd : 0 ~ pi
 
                         if (std::abs(angle) > 1e-10)
                         {
@@ -744,7 +744,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
             Eigen::Vector6d target_vel;
             target_pose_diff.setIdentity();
-            // target_vel.setZero();
+            target_vel.setZero();
 
             if (is_tracking_mode_on_[IDX_RIGHT_CON])
             {
@@ -792,13 +792,13 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     //         delta_avp(k) = 0.0;
                     // }
 
-                    // // Clamp
-                    // const double MAX_POS_DELTA = 0.5;
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
-                    //     if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
-                    // }
+                    // Clamp
+                    const double MAX_POS_DELTA = 0.2;
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
+                        if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
+                    }
 
                     const Eigen::Vector3d delta_base =
                         R_base_from_avp * delta_avp;
@@ -842,7 +842,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         //     angle = 0.0;
                         // }
 
-                        // const double MAX_ROT_DELTA = 0.60;  // ~34 deg
+                        // const double MAX_ROT_DELTA = 0.30;  // ~34 deg
                         // if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
                         // if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;
 
