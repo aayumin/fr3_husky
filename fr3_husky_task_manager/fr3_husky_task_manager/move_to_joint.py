@@ -11,8 +11,10 @@ from fr3_husky_msgs.action import MoveToJoint
 
 
 class MoveToJointClient(Node):
-    DEFAULT_LEFT_TARGET_POSITIONS = [0.25, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
-    DEFAULT_RIGHT_TARGET_POSITIONS = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_LEFT_TARGET_POSITIONS = [0.25, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_RIGHT_TARGET_POSITIONS = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
 
     def __init__(
         self,
