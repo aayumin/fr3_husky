@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:macro name="square_scene">
+        <!-- Visual walls from robosuite PegsArena -->
+        <!-- <geom pos="-1.2 0 1.5" quat="0.5 0.5 0.5 0.5"
+              size="1.5 1.5 0.01" type="box" conaffinity="0" contype="0"
+              group="1" name="wall_rear_visual" material="walls_mat"/> -->
+
+        <!-- Table geometry from robosuite TableArena with NutAssembly dimensions -->
+        <body name="table" pos="0.7 -0.25 0.6">
+            <geom name="table_collision"
+                  pos="0 0 0"
+                  size="0.4 0.6 0.025"
+                  type="box"
+                  group="0"
+                  friction="1 0.005 0.0001"/>
+            <geom name="table_visual"
+                  pos="0 0 0"
+                  size="0.4 0.6 0.025"
+                  type="box"
+                  conaffinity="0"
+                  contype="0"
+                  group="1"
+                  material="table_ceramic"/>
+            <site name="table_top" pos="0 0 0.025" size="0.001 0.001 0.001" rgba="0 0 0 0"/>
+
+            <geom name="table_leg1_visual"
+                  pos="0.3 0.3 -0.3975"
+                  size="0.025 0.3975"
+                  type="cylinder"
+                  conaffinity="0"
+                  contype="0"
+                  group="1"
+                  material="table_legs_metal"/>
+            <geom name="table_leg2_visual"
+                  pos="-0.3 0.3 -0.3975"
+                  size="0.025 0.3975"
+                  type="cylinder"
+                  conaffinity="0"
+                  contype="0"
+                  group="1"
+                  material="table_legs_metal"/>
+            <geom name="table_leg3_visual"
+                  pos="-0.3 -0.3 -0.3975"
+                  size="0.025 0.3975"
+                  type="cylinder"
+                  conaffinity="0"
+                  contype="0"
+                  group="1"
+                  material="table_legs_metal"/>
+            <geom name="table_leg4_visual"
+                  pos="0.3 -0.3 -0.3975"
+                  size="0.025 0.3975"
+                  type="cylinder"
+                  conaffinity="0"
+                  contype="0"
+                  group="1"
+                  material="table_legs_metal"/>
+        </body>
+
+    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="1 0 0 0"> -->
+    <body name="obj" pos="0.75 -0.02 0.88" quat="0.9914 0 0 0.1305">
+    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.9659 0 0 0.2588"> -->
+    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.8660 0 0 0.5000"> -->
+    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.5000 0 0 0.8660"> -->
+    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.1305 0 0 0.9914"> -->
+    
+
+    <joint name="obj_joint" type="free" damping="0.0005"/>
+
+    <!-- Long thin rod: local X axis is the major/yaw-sensitive axis -->
+    <geom name="obj_rod_main"
+          pos="0 0 0"
+          type="capsule"
+          fromto="-0.18 0 0  0.18 0 0"
+          size="0.012"
+          solimp="0.998 0.998 0.001"
+          solref="0.02 1"
+          density="250"
+          friction="1.2 0.4 0.2"
+          group="0"
+          condim="4"
+          material="bmetal"/>
+
+
+    <!-- Optional small red tip: shows +X direction -->
+    <geom name="obj_tip_pos_x"
+          pos="0.19 0 0"
+          size="0.015"
+          type="sphere"
+          solimp="0.998 0.998 0.001"
+          solref="0.02 1"
+          density="100"
+          friction="1.2 0.4 0.2"
+          group="0"
+          condim="4"
+          material="env_red"/>
+        
+      </body>
+
+
+        <!-- Fixed  -->
+        <body name="fixed_box" pos="0.7 -0.02 0.65">
+            <geom pos="0 0 0"
+                  size="0.08 0.08 0.15"
+                  type="box"
+                  group="0"
+                  friction="1 0.005 0.0001"/>
+        </body>
+
+
+
+
+
+    </xacro:macro>
+
+</mujoco>
