@@ -531,71 +531,151 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     // Manipulator control
     {   
 
-        if (!auto_tracking_started_)
-        {   
+        // sliding window check for /tracker_pose
+        const bool tracker_value_valid = tracker_pose_valid_[IDX_HEAD_CON] && tracker_pose_valid_[IDX_LEFT_CON] && tracker_pose_valid_[IDX_RIGHT_CON];
+        if (tracker_value_valid)
+        {
+            const int window_size = std::max(2, static_cast<int>(stable_window_sec_ / fr3_husky_model_updater_.dt_));
 
-            bool tracker_value_valid = tracker_pose_valid_[IDX_HEAD_CON] && tracker_pose_valid_[IDX_LEFT_CON] &&  tracker_pose_valid_[IDX_RIGHT_CON];
+            left_pose_window_.push_back(controller_poses_local[IDX_LEFT_CON]);
+            right_pose_window_.push_back(controller_poses_local[IDX_RIGHT_CON]);
+            head_pose_window_.push_back(controller_poses_local[IDX_HEAD_CON]);
 
-            if (tracker_value_valid)  // valid 한 값을 받으면, 
-            {   
-
-                const int window_size = std::max(2, static_cast<int>(stable_window_sec_ / fr3_husky_model_updater_.dt_));
-                left_pose_window_.push_back(controller_poses_local[IDX_LEFT_CON]);
-                right_pose_window_.push_back(controller_poses_local[IDX_RIGHT_CON]);
-                head_pose_window_.push_back(controller_poses_local[IDX_HEAD_CON]);
-                while (left_pose_window_.size() > static_cast<size_t>(window_size)) left_pose_window_.pop_front();
-                while (right_pose_window_.size() > static_cast<size_t>(window_size)) right_pose_window_.pop_front();
-                while (head_pose_window_.size() > static_cast<size_t>(window_size)) head_pose_window_.pop_front();
-
-                const bool window_ready = left_pose_window_.size() >= static_cast<size_t>(window_size) && right_pose_window_.size() >= static_cast<size_t>(window_size) && head_pose_window_.size() >= static_cast<size_t>(window_size);
-                const bool stable_for_capture = window_ready && isPoseWindowLiveAndStable(left_pose_window_) && isPoseWindowLiveAndStable(right_pose_window_) && isPoseWindowLiveAndStable(head_pose_window_);
-                
-                // 실시간 tracking 중이면, 그리고 안정적인 자세 유지 중이면
-                if (stable_for_capture) ++num_steps_for_capture;
-                else num_steps_for_capture = 0; // 아니면 다시 카운트 초기화.
+            while (left_pose_window_.size() > static_cast<size_t>(window_size)) left_pose_window_.pop_front();
+            while (right_pose_window_.size() > static_cast<size_t>(window_size)) right_pose_window_.pop_front();
+            while (head_pose_window_.size() > static_cast<size_t>(window_size)) head_pose_window_.pop_front();
+        }
 
 
+        if (!auto_tracking_started_ && tracker_value_valid)
+        {
+            const int window_size = std::max(2, static_cast<int>(stable_window_sec_ / fr3_husky_model_updater_.dt_));
 
-                if (num_steps_for_capture >= steps_until_capture_init_tracker)   // 일정 스텝 이상, 실시간 tracking 중에 안정적 자세 유지하면,
+            const bool window_ready =
+                left_pose_window_.size() >= static_cast<size_t>(window_size) &&
+                right_pose_window_.size() >= static_cast<size_t>(window_size) &&
+                head_pose_window_.size() >= static_cast<size_t>(window_size);
+
+            const bool stable_for_capture =
+                window_ready &&
+                isPoseWindowLiveAndStable(left_pose_window_) &&
+                isPoseWindowLiveAndStable(right_pose_window_) &&
+                isPoseWindowLiveAndStable(head_pose_window_);
+
+            if (stable_for_capture) ++num_steps_for_capture;
+            else num_steps_for_capture = 0;
+
+            if (num_steps_for_capture >= steps_until_capture_init_tracker)
+            {
+                controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
+
+                is_realtime_tracking_started_[IDX_LEFT_CON] = left_tracking_mode_on_;
+                if (!left_controller_ee_name_.empty())
                 {
-
-                    // Head init is common
-                    controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
-                    
-                    
-                    // Left hand / left EEF
-                    is_realtime_tracking_started_[IDX_LEFT_CON] = left_tracking_mode_on_;
-                    if (!left_controller_ee_name_.empty())
-                    {
-                        controller_poses_init_[IDX_LEFT_CON] = controller_poses_local[IDX_LEFT_CON];
-                        ee_data_[left_controller_ee_name_].setInit();
-                        is_first_target_left_ = true;
-                    }
-
-
-                    // Right hand / right EEF
-                    is_realtime_tracking_started_[IDX_RIGHT_CON] = right_tracking_mode_on_;
-                    if (!right_controller_ee_name_.empty())
-                    {
-                        controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
-                        ee_data_[right_controller_ee_name_].setInit();
-                        is_first_target_right_ = true;
-                    }
-
-
-                    RCLCPP_INFO(node_->get_logger(),
-                                "[%s] Auto tracking ON. left=%s right=%s",
-                                name_.c_str(),
-                                left_tracking_mode_on_ ? "true" : "false",
-                                right_tracking_mode_on_ ? "true" : "false");
-
-
-
-                    auto_tracking_started_ = true;
+                    controller_poses_init_[IDX_LEFT_CON] = controller_poses_local[IDX_LEFT_CON];
+                    ee_data_[left_controller_ee_name_].setInit();
+                    is_first_target_left_ = true;
                 }
-                
+
+                is_realtime_tracking_started_[IDX_RIGHT_CON] = right_tracking_mode_on_;
+                if (!right_controller_ee_name_.empty())
+                {
+                    controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
+                    ee_data_[right_controller_ee_name_].setInit();
+                    is_first_target_right_ = true;
+                }
+
+                RCLCPP_INFO(node_->get_logger(), "[%s] Auto tracking ON. left=%s right=%s", name_.c_str(), left_tracking_mode_on_ ? "true" : "false", right_tracking_mode_on_ ? "true" : "false");
+                auto_tracking_started_ = true;
+                lost_live_steps_ = 0;
             }
         }
+
+        if (auto_tracking_started_ && tracker_value_valid)
+        {
+            const bool live =
+                isPoseWindowLive(left_pose_window_) &&
+                isPoseWindowLive(right_pose_window_) &&
+                isPoseWindowLive(head_pose_window_);
+
+            if (live) {
+                lost_live_steps_ = 0;
+            } else {
+                ++lost_live_steps_;
+            }
+
+            if (lost_live_steps_ >= max_lost_live_steps_)
+            {
+                RCLCPP_WARN(node_->get_logger(), "[%s] Tracking frozen. Reinitializing.", name_.c_str());
+                resetRealtimeTracking();
+            }
+        }
+
+        // if (!auto_tracking_started_)
+        // {   
+
+        //     bool tracker_value_valid = tracker_pose_valid_[IDX_HEAD_CON] && tracker_pose_valid_[IDX_LEFT_CON] &&  tracker_pose_valid_[IDX_RIGHT_CON];
+
+        //     if (tracker_value_valid)  // valid 한 값을 받으면, 
+        //     {   
+
+        //         const int window_size = std::max(2, static_cast<int>(stable_window_sec_ / fr3_husky_model_updater_.dt_));
+        //         left_pose_window_.push_back(controller_poses_local[IDX_LEFT_CON]);
+        //         right_pose_window_.push_back(controller_poses_local[IDX_RIGHT_CON]);
+        //         head_pose_window_.push_back(controller_poses_local[IDX_HEAD_CON]);
+        //         while (left_pose_window_.size() > static_cast<size_t>(window_size)) left_pose_window_.pop_front();
+        //         while (right_pose_window_.size() > static_cast<size_t>(window_size)) right_pose_window_.pop_front();
+        //         while (head_pose_window_.size() > static_cast<size_t>(window_size)) head_pose_window_.pop_front();
+
+        //         const bool window_ready = left_pose_window_.size() >= static_cast<size_t>(window_size) && right_pose_window_.size() >= static_cast<size_t>(window_size) && head_pose_window_.size() >= static_cast<size_t>(window_size);
+        //         const bool stable_for_capture = window_ready && isPoseWindowLiveAndStable(left_pose_window_) && isPoseWindowLiveAndStable(right_pose_window_) && isPoseWindowLiveAndStable(head_pose_window_);
+                
+        //         // 실시간 tracking 중이면, 그리고 안정적인 자세 유지 중이면
+        //         if (stable_for_capture) ++num_steps_for_capture;
+        //         else num_steps_for_capture = 0; // 아니면 다시 카운트 초기화.
+
+
+
+        //         if (num_steps_for_capture >= steps_until_capture_init_tracker)   // 일정 스텝 이상, 실시간 tracking 중에 안정적 자세 유지하면,
+        //         {
+
+        //             // Head init is common
+        //             controller_poses_init_[IDX_HEAD_CON] = controller_poses_local[IDX_HEAD_CON];
+                    
+                    
+        //             // Left hand / left EEF
+        //             is_realtime_tracking_started_[IDX_LEFT_CON] = left_tracking_mode_on_;
+        //             if (!left_controller_ee_name_.empty())
+        //             {
+        //                 controller_poses_init_[IDX_LEFT_CON] = controller_poses_local[IDX_LEFT_CON];
+        //                 ee_data_[left_controller_ee_name_].setInit();
+        //                 is_first_target_left_ = true;
+        //             }
+
+
+        //             // Right hand / right EEF
+        //             is_realtime_tracking_started_[IDX_RIGHT_CON] = right_tracking_mode_on_;
+        //             if (!right_controller_ee_name_.empty())
+        //             {
+        //                 controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
+        //                 ee_data_[right_controller_ee_name_].setInit();
+        //                 is_first_target_right_ = true;
+        //             }
+
+
+        //             RCLCPP_INFO(node_->get_logger(),
+        //                         "[%s] Auto tracking ON. left=%s right=%s",
+        //                         name_.c_str(),
+        //                         left_tracking_mode_on_ ? "true" : "false",
+        //                         right_tracking_mode_on_ ? "true" : "false");
+
+
+
+        //             auto_tracking_started_ = true;
+        //         }
+                
+        //     }
+        // }
         
         if(!left_controller_ee_name_.empty()) // left AVP controller
         {
@@ -1057,7 +1137,7 @@ double AppleVisionPro::rotationDiff(const Eigen::Matrix3d& R_a, const Eigen::Mat
 
 bool AppleVisionPro::isPoseWindowLiveAndStable(const std::deque<Eigen::Affine3d>& poses)
 {
-    if (poses.size() < 2) return false;
+    if (poses.empty() || poses.size() < 2) return false;
 
     int live_updates = 0;
     Eigen::Vector3d p_min = poses.front().translation();
@@ -1087,6 +1167,37 @@ bool AppleVisionPro::isPoseWindowLiveAndStable(const std::deque<Eigen::Affine3d>
     return live && stable;
 }
 
+bool AppleVisionPro::isPoseWindowLive(const std::deque<Eigen::Affine3d>& poses)
+{
+    if (poses.empty() || poses.size() < 2) return false;
+
+    int live_updates = 0;
+
+    for (size_t i = 1; i < poses.size(); ++i)
+    {
+        const double dp_sq = (poses[i].translation() - poses[i - 1].translation()).squaredNorm();
+        if (dp_sq > min_live_p_diff_ * min_live_p_diff_) ++live_updates;
+    }
+
+    return live_updates >= min_live_updates_in_window_;
+}
+
+void AppleVisionPro::resetRealtimeTracking()
+{
+    auto_tracking_started_ = false;
+    is_realtime_tracking_started_[IDX_LEFT_CON] = false;
+    is_realtime_tracking_started_[IDX_RIGHT_CON] = false;
+
+    num_steps_for_capture = 0;
+    lost_live_steps_ = 0;
+
+    left_pose_window_.clear();
+    right_pose_window_.clear();
+    head_pose_window_.clear();
+
+    is_first_target_left_ = true;
+    is_first_target_right_ = true;
+}
 
 Eigen::Vector6d AppleVisionPro::computeTargetVelocity(
     const Eigen::Affine3d& prev,
