@@ -10,11 +10,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "action/GravityCompensation.action"
     "action/OmegaHaptic.action"
     "action/MoveToJoint.action"
+    "action/TaskSpaceMove.action"
     "action/ViveTracker.action"
     "action/MobileMove.action"
     "action/AppleVisionPro.action"
     "action/GripperCommand.action"
     "action/HuskyPedal.action"
+     DEPENDENCIES geometry_msgs std_msgs
 )
 
 
