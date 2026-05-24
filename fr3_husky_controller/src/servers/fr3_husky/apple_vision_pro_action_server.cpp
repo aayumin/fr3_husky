@@ -258,7 +258,7 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
         });
 
     // Initialize franka hand state
-    for(const auto& robot_name : fr3_husky_model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
+    // for(const auto& robot_name : fr3_husky_model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
 
     target_raw_pose_l_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_left", 10);
     target_raw_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_right", 10);
@@ -343,7 +343,7 @@ void AppleVisionPro::onStart()
     is_gripper_mode_on_.assign(NUM_CONTROLLERS, false);
 
 
-    for(const auto& robot_name : fr3_husky_model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
+    // for(const auto& robot_name : fr3_husky_model_updater_.robot_names_) fr3_husky_model_updater_.GripperHoming(robot_name); 
 
 
     // tracking state

@@ -120,18 +120,18 @@ private:
 
     // initial capture
     bool is_initialized = false;
-    int steps_until_capture_init_tracker = 30;
+    int steps_until_capture_init_tracker = 10;
     int num_steps_for_capture = 0;
     std::deque<Eigen::Affine3d> left_pose_window_;
     std::deque<Eigen::Affine3d> right_pose_window_;
     std::deque<Eigen::Affine3d> head_pose_window_;
     double stable_window_sec_ = 0.5;
-    int min_live_updates_in_window_ = 5;
+    int min_live_updates_in_window_ = 2;
     // double min_live_p_diff_ = 1e-7;
     // double min_live_r_diff_ = 1e-7;
     double min_live_p_diff_ = 1e-13;
     double min_live_r_diff_ = 1e-13;
-    double max_stable_p_range_ = 0.015;
+    double max_stable_p_range_ = 0.03;
     double max_stable_r_range_ = 0.05;
     bool isPoseWindowLiveAndStable(const std::deque<Eigen::Affine3d>& poses);
     double rotationDiff(const Eigen::Matrix3d& R_a, const Eigen::Matrix3d& R_b);
