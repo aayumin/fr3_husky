@@ -59,56 +59,90 @@
                   material="table_legs_metal"/>
         </body>
 
-    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="1 0 0 0"> -->
-    <body name="obj" pos="0.75 -0.02 0.88" quat="0.9914 0 0 0.1305">
-    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.9659 0 0 0.2588"> -->
-    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.8660 0 0 0.5000"> -->
-    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.5000 0 0 0.8660"> -->
-    <!-- <body name="obj" pos="0.75 -0.02 0.88" quat="0.1305 0 0 0.9914"> -->
-    
-
+<!-- Movable T-shaped object -->
+<body name="obj" pos="0.70 -0.50 0.84" quat="1 0 0 0">
     <joint name="obj_joint" type="free" damping="0.0005"/>
 
-    <!-- Long thin rod: local X axis is the major/yaw-sensitive axis -->
-    <geom name="obj_rod_main"
-          pos="0 0 0"
-          type="capsule"
-          fromto="-0.18 0 0  0.18 0 0"
-          size="0.012"
-          solimp="0.998 0.998 0.001"
-          solref="0.02 1"
-          density="250"
-          friction="1.2 0.4 0.2"
-          group="0"
+    <geom name="obj_t_stem"
+          type="box"
+          pos="0 -0.040 0"
+          size="0.015 0.075 0.015"
+          density="150"
+          friction="1.0 0.3 0.1"
           condim="4"
           material="bmetal"/>
 
-
-    <!-- Optional small red tip: shows +X direction -->
-    <geom name="obj_tip_pos_x"
-          pos="0.19 0 0"
-          size="0.015"
-          type="sphere"
-          solimp="0.998 0.998 0.001"
-          solref="0.02 1"
-          density="100"
-          friction="1.2 0.4 0.2"
-          group="0"
+    <geom name="obj_t_head"
+          type="box"
+          pos="0 0.050 0"
+          size="0.070 0.015 0.015"
+          density="150"
+          friction="1.0 0.3 0.1"
           condim="4"
-          material="env_red"/>
-        
-      </body>
+          material="bmetal"/>
+
+    <!-- <site name="obj_center_site" pos="0 0 0" size="0.004" rgba="1 0 0 1"/>
+    <site name="obj_yaw_axis_site" pos="0 0.085 0" size="0.005" rgba="0 1 0 1"/> -->
+</body>
 
 
-        <!-- Fixed  -->
-        <body name="fixed_box" pos="0.7 -0.02 0.65">
-            <geom pos="0 0 0"
-                  size="0.08 0.08 0.15"
-                  type="box"
-                  group="0"
-                  friction="1 0.005 0.0001"/>
-        </body>
+<!-- Fixed T-shaped socket with small clearance -->
+<body name="t_slot_fixture" pos="0.70 -0.25 0.65" quat="1 0 0 0">
+    <geom name="t_slot_floor"
+          type="box"
+          pos="0 0 0"
+          size="0.095 0.115 0.010"
+          contype="1"
+          conaffinity="1"
+          material="ring_gray"/>
 
+    <!-- outer walls forming a T-shaped cavity -->
+    <geom name="t_slot_left_outer_wall"
+          type="box"
+          pos="-0.085 0.000 0.030"
+          size="0.010 0.115 0.030"
+          friction="1.0 0.3 0.1"
+          material="env_blue"/>
+
+    <geom name="t_slot_right_outer_wall"
+          type="box"
+          pos="0.085 0.000 0.030"
+          size="0.010 0.115 0.030"
+          friction="1.0 0.3 0.1"
+          material="env_blue"/>
+
+    <geom name="t_slot_top_wall"
+          type="box"
+          pos="0 0.105 0.030"
+          size="0.085 0.010 0.030"
+          friction="1.0 0.3 0.1"
+          material="env_blue"/>
+
+    <geom name="t_slot_bottom_wall"
+          type="box"
+          pos="0 -0.105 0.030"
+          size="0.025 0.010 0.030"
+          friction="1.0 0.3 0.1"
+          material="env_blue"/>
+
+    <!-- shoulders: these make the cavity a true T shape -->
+    <geom name="t_slot_left_shoulder"
+          type="box"
+          pos="-0.055 -0.040 0.030"
+          size="0.030 0.075 0.030"
+          friction="1.0 0.3 0.1"
+          material="env_blue"/>
+
+    <geom name="t_slot_right_shoulder"
+          type="box"
+          pos="0.055 -0.040 0.030"
+          size="0.030 0.075 0.030"
+          friction="1.0 0.3 0.1"
+          material="env_blue"/>
+
+    <!-- <site name="t_slot_center_site" pos="0 0 0.045" size="0.005" rgba="1 0 0 1"/>
+    <site name="t_slot_yaw_axis_site" pos="0 0.085 0.045" size="0.005" rgba="0 1 0 1"/> -->
+</body>
 
 
 
