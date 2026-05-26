@@ -82,6 +82,9 @@ void TaskSpaceDeltaMove::onGoalAccepted(const ActionT::Goal& goal)
     RCLCPP_INFO(node_->get_logger(),
                 "[%s] goal accepted: %zu EE targets",
                 name_.c_str(), ee_names_.size());
+
+    RCLCPP_INFO(node_->get_logger(), "[%s] onGoalAccepted: ee_names=%zu delta=%zu",
+            name_.c_str(), ee_names_.size(), target_delta_poses_.size());
 }
 
 void TaskSpaceDeltaMove::onStart()
@@ -106,6 +109,9 @@ void TaskSpaceDeltaMove::onStart()
 
     start_time_set_ = false;
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
+
+    RCLCPP_INFO(node_->get_logger(), "[%s] onStart: ee_names=%zu start_poses=%zu ee_data=%zu",
+            name_.c_str(), ee_names_.size(), start_poses_.size(), ee_data_.size());
 }
 
 
@@ -193,6 +199,15 @@ TaskSpaceDeltaMove::ComputeResult TaskSpaceDeltaMove::compute(
     std::vector<double> ori_errors;
     bool all_reached = true;
 
+    if (ee_names_.size() != start_poses_.size() || ee_names_.size() != target_delta_poses_.size())
+    {
+        RCLCPP_ERROR(node_->get_logger(),
+                    "[%s] size mismatch: ee_names=%zu start_poses=%zu target_delta_poses=%zu",
+                    name_.c_str(), ee_names_.size(), start_poses_.size(), target_delta_poses_.size());
+        result_error_code_ = 1;
+        return ComputeResult::ABORTED;
+    }
+
     for (size_t i = 0; i < ee_names_.size(); ++i)
     {
         const auto& ee_name = ee_names_[i];
@@ -230,7 +245,8 @@ TaskSpaceDeltaMove::ComputeResult TaskSpaceDeltaMove::compute(
     Eigen::VectorXd null_qdot_mani = Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
     Eigen::VectorXd null_qdot_mobile = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
 
-    Eigen::VectorXd null_qdot(fr3_husky_model_updater_.robot_data_->getActuatorDof());
+    // Eigen::VectorXd null_qdot(fr3_husky_model_updater_.robot_data_->getActuatorDof());
+    Eigen::VectorXd null_qdot = Eigen::VectorXd::Zero(fr3_husky_model_updater_.robot_data_->getActuatorDof());
     const auto& act_idx = fr3_husky_model_updater_.robot_data_->getActuatorIndex();
 
     null_qdot.segment(act_idx.mobi_start, fr3_husky_model_updater_.mobile_dof_) = null_qdot_mobile;

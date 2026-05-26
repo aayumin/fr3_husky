@@ -196,6 +196,7 @@ class TaskSpaceMoveClient(Node):
             self.get_logger().error(
                 f"{param_name} must have exactly {size} elements, got {len(values)}"
             )
+            
             rclpy.shutdown()
 
     def cancel_goal(self):
@@ -214,7 +215,8 @@ def run_task_space_move(
     pos_tolerance=0.01,
     ori_tolerance=0.05,
 ):
-    rclpy.init()
+    if not rclpy.ok():
+        rclpy.init()
 
     node = TaskSpaceMoveClient(
         arm=arm,
@@ -229,6 +231,7 @@ def run_task_space_move(
 
     try:
         node.send_goal_and_wait()
+        result = f"Task-space move completed successfully. [arm:{arm}]"
 
     except KeyboardInterrupt:
         cancel_future = node.cancel_goal()
@@ -241,11 +244,14 @@ def run_task_space_move(
                 rclpy.spin_until_future_complete(node, node._result_future, timeout_sec=5.0)
             except KeyboardInterrupt:
                 pass
+        
+        result = f"Task-space move interrupted and cancelled. [arm:{arm}]"
 
     finally:
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+        return result
 
 
 def main(args=None):

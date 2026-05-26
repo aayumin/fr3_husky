@@ -214,7 +214,8 @@ def run_task_space_delta_move(
     pos_tolerance=0.01,
     ori_tolerance=0.05,
 ):
-    rclpy.init()
+    if not rclpy.ok():
+        rclpy.init()
 
     node = TaskSpaceDeltaMoveClient(
         arm=arm,
@@ -229,6 +230,7 @@ def run_task_space_delta_move(
 
     try:
         node.send_goal_and_wait()
+        result = f"Task-space delta move completed successfully. [arm:{arm}]"
 
     except KeyboardInterrupt:
         cancel_future = node.cancel_goal()
@@ -242,10 +244,13 @@ def run_task_space_delta_move(
             except KeyboardInterrupt:
                 pass
 
+        result = f"Task-space delta move interrupted and cancelled. [arm:{arm}]"
+
     finally:
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+        return result
 
 
 def main(args=None):
