@@ -2,12 +2,14 @@
 
 #include <string>
 #include <chrono>
+#include <thread>
 #include <array>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <cassert>
 #include <cmath>
+#include <random>
 #include <exception>
 #include <map>
 #include <functional>
@@ -15,6 +17,7 @@
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <filesystem>
 #include <type_traits>
 #include <Eigen/Eigen>
 #include <queue>
@@ -148,6 +151,7 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         std::mutex heavy_init_mutex_;
         bool heavy_init_done_{false};
         controller_interface::CallbackReturn initialize_heavy_resources();
+        bool object_randomized_ = false;
 
         // ========================================================================
         // ============================== Parameters ==============================

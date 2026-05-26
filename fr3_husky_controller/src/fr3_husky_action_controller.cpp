@@ -1,7 +1,68 @@
 #include "fr3_husky_controller/fr3_husky_action_controller.hpp"
+#include <mujoco/mujoco.h>
 
 #include <unordered_set>
 #include <controller_manager_msgs/srv/list_hardware_interfaces.hpp>
+
+
+
+
+namespace mujoco_ros_hardware
+{
+class MujocoWorldSingleton
+{
+public:
+    static MujocoWorldSingleton& get();
+    const std::string & xacroPath() const;
+    bool isSceneLoaded() const;
+    mjModel* model() const;
+    mjData* data() const;
+    std::mutex& dataMutex();
+};
+}  // namespace mujoco_ros_hardware
+
+
+
+void randomizeFreeBodyPose(
+    mjModel* model,
+    mjData* data,
+    const std::string& joint_name,
+    double x_min, double x_max,
+    double y_min, double y_max,
+    double z,
+    double yaw_min, double yaw_max)
+{
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    std::uniform_real_distribution<double> x_dist(x_min, x_max);
+    std::uniform_real_distribution<double> y_dist(y_min, y_max);
+    std::uniform_real_distribution<double> yaw_dist(yaw_min, yaw_max);
+
+    const int jid = mj_name2id(model, mjOBJ_JOINT, joint_name.c_str());
+    if (jid < 0) return;
+
+    const int qadr = model->jnt_qposadr[jid];
+    const int vadr = model->jnt_dofadr[jid];
+
+    const double x = x_dist(gen);
+    const double y = y_dist(gen);
+    const double yaw = yaw_dist(gen);
+
+    data->qpos[qadr + 0] = x;
+    data->qpos[qadr + 1] = y;
+    data->qpos[qadr + 2] = z;
+
+    data->qpos[qadr + 3] = std::cos(yaw * 0.5);
+    data->qpos[qadr + 4] = 0.0;
+    data->qpos[qadr + 5] = 0.0;
+    data->qpos[qadr + 6] = std::sin(yaw * 0.5);
+
+    for (int i = 0; i < 6; ++i)
+        data->qvel[vadr + i] = 0.0;
+}
+
+
 
 namespace fr3_husky_controller
 {
@@ -220,7 +281,7 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         kJoyTopic, rclcpp::SystemDefaultsQoS(),
         std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
 
-
+    
 
     heavy_init_done_ = false;
 
@@ -371,14 +432,6 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     model_updater_->setDRCRobotData(std::move(robot_data));
     model_updater_->setDRCRobotController(std::move(robot_controller));
 
-    
-    // odom_timer_ = get_node()->create_wall_timer(
-    //     std::chrono::duration<double>(1.0 / publish_rate_),
-    //     [this]()
-    //     {
-    //         this->publishFromMobileStateBuffer();
-    //     }
-    // );
 
 
     heavy_init_done_ = true;
@@ -394,11 +447,7 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
 
 CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
-    // if (initialize_heavy_resources() != CallbackReturn::SUCCESS)
-    // {
-    //     LOGE(get_node(), "Heavy initialization failed.");
-    //     return CallbackReturn::ERROR;
-    // }
+    
 
     if (!model_updater_)
     {
@@ -527,7 +576,7 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     }
 
     model_updater_->setRobotHandles(std::move(robot_handle));
-
+    object_randomized_ = false;
 
 
 
@@ -697,6 +746,9 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         return controller_interface::return_type::ERROR;
     }
 
+
+
+
     play_time_ = get_node()->now().seconds();
     model_updater_->updateJointStates();
     model_updater_->updateRobotData();
@@ -823,6 +875,38 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     {
         model_updater_->forceStopMobile();
     }
+
+
+
+    // Randomize initial pose of the free body (object) in the scene
+    if (!object_randomized_)
+    {
+        auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
+        const std::string scene_name = std::filesystem::path(mujoco_ros_hardware::MujocoWorldSingleton::get().xacroPath()).filename().string();
+        std::lock_guard<std::mutex> lock(world.dataMutex());
+        mjModel* mj_model = world.model();
+        mjData* mj_data = world.data();
+        if ((scene_name.find("square") != std::string::npos) || (scene_name.find("coffee") != std::string::npos))
+        {   
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, M_PI); // 0.78 -0.28 0.65
+        }
+        else if (scene_name.find("yaw") != std::string::npos)
+        {   
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.5, -0.3, 0.65, -M_PI, M_PI); // 0.78 -0.4 0.65
+        }
+        else if (scene_name.find("threading") != std::string::npos)
+        {
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.42, -0.22, 0.75, -M_PI, M_PI);  // 0.78 -0.32 0.75
+        }
+        else if (scene_name.find("threepieceassembly") != std::string::npos)
+        {
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.75, -M_PI, M_PI);   // 0.78 -0.28 0.75
+        }
+
+        mj_forward(mj_model, mj_data);
+        object_randomized_ = true;    
+    }
+
 
     return controller_interface::return_type::OK;
 }
