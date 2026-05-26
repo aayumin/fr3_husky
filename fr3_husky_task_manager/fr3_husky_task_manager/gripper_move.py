@@ -7,7 +7,8 @@ import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-from franka_msgs.action import Grasp, Move
+# from franka_msgs.action import Grasp, Move
+from fr3_husky_msgs.action import GripperCommand
 
 
 class GripperMoveClient(Node):
@@ -55,24 +56,21 @@ class GripperMoveClient(Node):
             return f'Invalid epsilon_outer value: {epsilon_outer}. Use a value from 0.0 to 0.08 meters.'
 
         arms = ['left', 'right'] if arm_names == 'both' else [arm_names]
-        use_grasp = command == 'grasp'
-
+        
         for arm in arms:
-            if use_grasp:
-                action_name = f'/{arm}_franka_gripper/grasp'
-                client = ActionClient(self, Grasp, action_name)
-                goal = Grasp.Goal()
-                goal.width = float(target_width)
-                goal.speed = float(speed)
-                goal.force = float(force)
-                goal.epsilon.inner = float(epsilon_inner)
-                goal.epsilon.outer = float(epsilon_outer)
-            else:
-                action_name = f'/{arm}_franka_gripper/move'
-                client = ActionClient(self, Move, action_name)
-                goal = Move.Goal()
-                goal.width = float(target_width)
-                goal.speed = float(speed)
+            action_name = f'/fr3_husky_gripper_command'
+            client = ActionClient(self, GripperCommand, action_name)
+            goal = GripperCommand.Goal()
+            goal.arm_names = arm
+            goal.command = command
+            goal.width = float(target_width)
+            goal.speed = float(speed)
+            goal.force = float(force)
+            goal.epsilon_inner = float(epsilon_inner)
+            goal.epsilon_outer = float(epsilon_outer)
+            goal.use_weld = True
+            goal.weld_name = "weld_right_tcp"
+
 
             self.get_logger().info(f'Waiting for action server: {action_name}')
             client.wait_for_server()
@@ -102,11 +100,9 @@ class GripperMoveClient(Node):
             self.get_logger().info(f'Result - success: {result.success}')
 
             if not result.success:
-                if use_grasp:
-                    return f'Gripper grasp failed: {arm} gripper did not grasp at width {target_width}.'
                 return f'Gripper move failed: {arm} gripper did not move to width {target_width}.'
 
-        action = 'grasped at' if use_grasp else 'moved to'
+        action = 'moved to'
         if arm_names == 'both':
             return f'Gripper move completed: both grippers {action} width {target_width}.'
         return f'Gripper move completed: {arm_names} gripper {action} width {target_width}.'

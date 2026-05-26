@@ -54,7 +54,7 @@ bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger, bool active
         return false;
     }
 
-    constexpr const char* kWeldName = "weld_blue_right_tcp";
+    constexpr const char* kWeldName = "weld_right_tcp";
     constexpr const char* kParentBodyName = "right_fr3_hand_tcp";
     constexpr const char* kChildBodyName = "obj";
     constexpr const char* kChildFreeJointName = "obj_joint";
@@ -130,6 +130,8 @@ GripperCommand::GripperCommand(
   fr3_husky_model_updater_(getFR3HuskyModelUpdater(model_updater, name))
 {
     mode_ = ServerMode::CONTROLLER;
+
+    RCLCPP_INFO(node_->get_logger(), "[%s] GripperCommand created", name_.c_str());
 }
 
 bool GripperCommand::acceptGoal(const ActionT::Goal& goal)
@@ -165,7 +167,7 @@ bool GripperCommand::acceptGoal(const ActionT::Goal& goal)
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject: epsilon out of range [0.0, 0.08]", name_.c_str());
         return false;
     }
-    if (goal.use_weld && !goal.weld_name.empty() && goal.weld_name != "weld_blue_right_tcp")
+    if (goal.use_weld && !goal.weld_name.empty() && goal.weld_name != "weld_right_tcp")
     {
         RCLCPP_WARN(node_->get_logger(), "[%s] Reject: unsupported weld_name '%s'", name_.c_str(), goal.weld_name.c_str());
         return false;
@@ -202,6 +204,7 @@ GripperCommand::ComputeResult GripperCommand::compute(
     const std::vector<std::string> arms =
         (goal_.arm_names == "both") ? std::vector<std::string>{"left", "right"}
                                     : std::vector<std::string>{goal_.arm_names};
+
 
     for (const auto& arm : arms)
     {
@@ -262,11 +265,12 @@ bool GripperCommand::runCommandForArm(const std::string& arm)
 
 bool GripperCommand::setWeldActive(bool active)
 {
+
     if (!goal_.use_weld)
     {
         return true;
     }
-    if (!goal_.weld_name.empty() && goal_.weld_name != "weld_blue_right_tcp")
+    if (!goal_.weld_name.empty() && goal_.weld_name != "weld_right_tcp")
     {
         return false;
     }

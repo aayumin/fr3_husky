@@ -7,7 +7,7 @@ float64 force             # [N], used for grasp
 float64 epsilon_inner     # [m], used for grasp
 float64 epsilon_outer     # [m], used for grasp
 bool use_weld             # MuJoCo-only object weld attach/detach
-string weld_name          # currently supports "weld_blue_right_tcp"
+string weld_name          # currently supports "weld_right_tcp"
 ---
 # Result
 bool success
