@@ -72,8 +72,6 @@ def _launch_setup(context, *args, **kwargs):
     avp_frame_id         = LaunchConfiguration('avp_frame_id')
     launch_avp_image_bridge = LaunchConfiguration('launch_avp_image_bridge')
     avp_image_bridge_script = LaunchConfiguration('avp_image_bridge_script')
-    avp_image_remote_ip     = LaunchConfiguration('avp_image_remote_ip')
-    avp_image_remote_port   = LaunchConfiguration('avp_image_remote_port')
     avp_image_max_fps       = LaunchConfiguration('avp_image_max_fps')
 
     if not robot_sides:
@@ -258,11 +256,12 @@ def _launch_setup(context, *args, **kwargs):
                 'python3',
                 avp_image_bridge_script,
                 '--ros-args',
-                '-p', ['remote_ip:=', avp_image_remote_ip],
-                '-p', ['remote_port:=', avp_image_remote_port],
+                '-p', ['host:=', '0.0.0.0'],
+                '-p', ['port:=', '8080'],
                 '-p', ['max_fps:=', avp_image_max_fps],
+                '-p', 'max_width:=480',
             ],
-            name='camera2avp_bridge',
+            name='camera2avp_webrtc',
             output='screen',
             condition=IfCondition(PythonExpression([
                 "'", LaunchConfiguration('use_mujoco'), "' == 'true' and '",
@@ -414,11 +413,9 @@ def generate_launch_description():
         DeclareLaunchArgument('launch_avp_image_bridge', default_value='true', description='Launch MuJoCo camera image UDP sender for AVP'),
         DeclareLaunchArgument(
             'avp_image_bridge_script',
-            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp.py']),
-            description='Path to ROS-image to AVP UDP sender script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp_webrtc.py']),
+            description='Path to ROS-image to AVP WebRTC sender script',
         ),
-        DeclareLaunchArgument('avp_image_remote_ip', default_value='192.168.0.84', description='UDP destination IP for AVP image receiver'),
-        DeclareLaunchArgument('avp_image_remote_port', default_value='5010', description='UDP destination port for AVP image receiver'),
-        DeclareLaunchArgument('avp_image_max_fps', default_value='2.0', description='Maximum per-stream UDP image send rate'),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='12.0', description='Maximum per-stream WebRTC image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])
