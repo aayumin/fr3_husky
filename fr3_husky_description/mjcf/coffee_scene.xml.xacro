@@ -7,7 +7,7 @@
               group="1" name="wall_rear_visual" material="walls_mat"/> -->
 
         <!-- TableArena-style table with coffee task dimensions -->
-        <body name="coffee_table" pos="0.74 -0.25 0.6">
+        <body name="coffee_table" pos="0.9 -0.05 0.6">
             <geom name="coffee_table_collision"
                   pos="0 0 0"
                   size="0.4 0.6 0.025"
@@ -59,7 +59,7 @@
         </body>
 
         <!-- Coffee machine, matching the CoffeeMachineObject composition in mimicgen -->
-        <body name="coffee_machine_root" pos="0.74 -0.1 0.75" quat="0 0 0 1">
+        <body name="coffee_machine_root" pos="0.74 0.0 0.75" quat="0 0 0 1">
             <!-- <freejoint name="coffee_machine_joint"/> -->
 
             <body name="coffee_machine_body_root" pos="0 -0.05 0" quat="0 0 0 1">
@@ -214,7 +214,7 @@
         </body>
 
         <!-- Coffee pod, which is the manipulated object -->
-        <body name="obj" pos="0.68 -0.4 0.7" quat="1 0 0 0"> <!-- z-axis : 1 0 0 0 | y-axis : NONE | x-axis : 1 0 0 0 -->
+        <body name="obj" pos="0.68 -0.3 0.7" quat="1 0 0 0"> <!-- z-axis : 1 0 0 0 | y-axis : NONE | x-axis : 1 0 0 0 -->
             <freejoint name="obj_joint"/>
             <geom name="coffee_pod_g0"
                   pos="0 0 0"

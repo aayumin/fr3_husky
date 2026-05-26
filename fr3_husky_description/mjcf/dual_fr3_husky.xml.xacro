@@ -169,6 +169,8 @@
         <material name="ring_gray" rgba="0.85 0.85 0.85 1" />
         <mesh name="table_mesh" file="$(find fr3_husky_description)/meshes/table.stl" scale="0.5 0.5 0.4" />
         <mesh name="bowl_mesh" file="$(find fr3_husky_description)/meshes/cup_nohandle.stl" scale="1.2 1.2 0.05" />
+        <texture file="$(find fr3_husky_description)/textures/ceramic.png" type="cube" name="tex-ceramic"/>
+        <material name="table_ceramic" reflectance="0.0" shininess="0.0" specular="0.2" texrepeat="1 1" texture="tex-ceramic"/>
 
 
 
@@ -205,14 +207,14 @@
         <geom name="floor" type="plane" size="0 0 0.05" material="groundplane" />
 
         <!-- Environment objects from tmm_mujoco/robots/dual_fr3_husky_env.xml -->
-        <geom name="table" type="mesh" mesh="table_mesh" material="table_brown" pos="1 -0.3 0" />
-        <body name="blue_bowl_body" pos="0.68 -0.6 0.555">
+        <geom name="table" type="mesh" mesh="table_mesh" material="table_ceramic" pos="1 -0.05 0" />
+        <body name="blue_bowl_body" pos="0.75 -0.4 0.555">
             <geom name="blue_bowl_geom" type="mesh" mesh="bowl_mesh" material="obj_blue" mass="0.2" />
         </body>
-        <body name="red_bowl_body" pos="0.68 0.0 0.555">
+        <body name="red_bowl_body" pos="0.75 0.2 0.555">
             <geom name="red_bowl_geom" type="mesh" mesh="bowl_mesh" material="obj_red" mass="0.2" />
         </body>
-        <body name="obj" pos="0.68 -0.3 0.62">
+        <body name="obj" pos="0.78 0.14 0.62">
             <freejoint name="obj_joint"/>
             <!-- <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="env_blue" mass="0.05" /> -->
             <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="obj_blue" mass="0.05"  
