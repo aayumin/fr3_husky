@@ -76,7 +76,7 @@
         </body>
 
         <!-- Square nut from robosuite square-nut.xml --> <!-- z-axis : 0.7071 0 0 -0.7071 | y-axis : 0.7071 0 0 -0.7071 | x-axis : 0.7071 0 0 -0.7071 -->
-        <body name="obj" pos="0.72 -0.3 0.62" quat="0.7071 0 0 -0.7071">
+        <body name="obj" pos="0.78 -0.28 0.65" quat="0.7071 0 0 -0.7071">
             <freejoint name="obj_joint"/>
             <geom pos="-0.03325 0 0"
                   size="0.0105 0.04375 0.02"

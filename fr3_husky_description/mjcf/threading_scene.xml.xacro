@@ -18,12 +18,12 @@
         <body name="threading_table" pos="0.8 -0.05 0.7"> 
             <geom name="threading_table_top"
                   type="box"
-                  size="0.26 0.5 0.02"
+                  size="0.26 0.55 0.02"
                   material="table_ceramic"
                   friction="1 0.005 0.0001"/>
         </body>
 
-        <body name="obj" pos="0.68 -0.4 0.8" quat="0 0 0 1"> <!-- z-axis : 0 0 0 1 | y-axis : NONE | x-axis : 0 0 0 1-->
+        <body name="obj" pos="0.78 -0.32 0.75" quat="0 0 0 1"> <!-- z-axis : 0 0 0 1 | y-axis : NONE | x-axis : 0 0 0 1-->
             <freejoint name="obj_joint"/>
             <geom name="obj_needle"
                   type="box"
@@ -44,7 +44,7 @@
                   solimp="0.9 0.95 0.001"/>
         </body>
 
-        <body name="tripod_obj" pos="0.80 -0.05 0.8" quat="0.7071068 0 0 0.7071068">
+        <body name="tripod_obj" pos="0.80 0.05 0.8" quat="0.7071068 0 0 0.7071068">
             <geom name="tripod_obj_ring_0" type="box" pos="0 -0.015 0.073" size="0.02 0.0062 0.0062" material="obj_blue" density="100" friction="0.3 0.005 0.0001" solref="0.02 1" solimp="0.9 0.95 0.001"/>
             <geom name="tripod_obj_ring_1" type="box" pos="0 -0.009 0.073" size="0.02 0.0062 0.0062" material="obj_blue" density="100" friction="0.3 0.005 0.0001" solref="0.02 1" solimp="0.9 0.95 0.001"/>
             <geom name="tripod_obj_ring_2" type="box" pos="0 -0.003 0.073" size="0.02 0.0062 0.0062" material="obj_blue" density="100" friction="0.3 0.005 0.0001" solref="0.02 1" solimp="0.9 0.95 0.001"/>
