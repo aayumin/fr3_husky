@@ -102,28 +102,28 @@
           pos="-0.085 0.000 0.030"
           size="0.010 0.115 0.030"
           friction="1.0 0.3 0.1"
-          material="env_blue"/>
+          material="obj_blue"/>
 
     <geom name="t_slot_right_outer_wall"
           type="box"
           pos="0.085 0.000 0.030"
           size="0.010 0.115 0.030"
           friction="1.0 0.3 0.1"
-          material="env_blue"/>
+          material="obj_blue"/>
 
     <geom name="t_slot_top_wall"
           type="box"
           pos="0 0.105 0.030"
           size="0.085 0.010 0.030"
           friction="1.0 0.3 0.1"
-          material="env_blue"/>
+          material="obj_blue"/>
 
     <geom name="t_slot_bottom_wall"
           type="box"
           pos="0 -0.105 0.030"
           size="0.025 0.010 0.030"
           friction="1.0 0.3 0.1"
-          material="env_blue"/>
+          material="obj_blue"/>
 
     <!-- shoulders: these make the cavity a true T shape -->
     <geom name="t_slot_left_shoulder"
@@ -131,14 +131,14 @@
           pos="-0.055 -0.040 0.030"
           size="0.030 0.075 0.030"
           friction="1.0 0.3 0.1"
-          material="env_blue"/>
+          material="obj_blue"/>
 
     <geom name="t_slot_right_shoulder"
           type="box"
           pos="0.055 -0.040 0.030"
           size="0.030 0.075 0.030"
           friction="1.0 0.3 0.1"
-          material="env_blue"/>
+          material="obj_blue"/>
 
     <!-- <site name="t_slot_center_site" pos="0 0 0.045" size="0.005" rgba="1 0 0 1"/>
     <site name="t_slot_yaw_axis_site" pos="0 0.085 0.045" size="0.005" rgba="0 1 0 1"/> -->

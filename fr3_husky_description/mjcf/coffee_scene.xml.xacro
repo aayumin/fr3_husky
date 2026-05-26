@@ -211,35 +211,6 @@
                       solimp="0.998 0.998 0.001"/>
             </body>
 
-            <!-- <body name="coffee_machine_cup_root" pos="0 0.1061 -0.0755" quat="0.7071068 0 0 -0.7071068">
-                <geom name="coffee_machine_cup_body_g0"
-                      pos="0 0 0"
-                      type="cylinder"
-                      size="0.03 0.025"
-                      rgba="0.839 0.839 0.839 1"
-                      density="1000"
-                      friction="0.95 0.3 0.1"
-                      solref="0.02 1"
-                      solimp="0.998 0.998 0.001"/>
-                <geom name="coffee_machine_cup_base_g0"
-                      pos="0 0 -0.015"
-                      type="cylinder"
-                      size="0.025 0.005"
-                      rgba="0.839 0.839 0.839 1"
-                      density="1000"
-                      friction="0.95 0.3 0.1"
-                      solref="0.02 1"
-                      solimp="0.998 0.998 0.001"/>
-                <geom name="coffee_machine_cup_handle_g0"
-                      type="capsule"
-                      fromto="0 0.055 0 0 0.075 0"
-                      size="0.003"
-                      rgba="0.839 0.839 0.839 1"
-                      density="1000"
-                      friction="0.95 0.3 0.1"
-                      solref="0.02 1"
-                      solimp="0.998 0.998 0.001"/>
-            </body> -->
         </body>
 
         <!-- Coffee pod, which is the manipulated object -->
@@ -255,8 +226,7 @@
                   friction="1 1 1"
                   group="0"
                   condim="4"
-                  rgba="0.839 0.839 0.839 1"
-                  material="ceramic"/>
+                  material="obj_yellow"/>
             <site name="obj_bottom_site" rgba="0 0 0 0" size="0.005" pos="0 0 -0.023103"/>
             <site name="obj_top_site" rgba="0 0 0 0" size="0.005" pos="0 0 0.023103"/>
             <site name="obj_horizontal_radius_site" rgba="0 0 0 0" size="0.005" pos="0.0243 0.0243 0"/>

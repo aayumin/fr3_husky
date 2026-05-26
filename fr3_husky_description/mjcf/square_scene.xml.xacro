@@ -72,7 +72,7 @@
                   conaffinity="0"
                   contype="0"
                   group="1"
-                  material="bmetal"/> <!--material="bmetal"-->
+                  material="matte_wood_dark"/> <!--material="bmetal"-->
         </body>
 
         <!-- Square nut from robosuite square-nut.xml --> <!-- z-axis : 0.7071 0 0 -0.7071 | y-axis : 0.7071 0 0 -0.7071 | x-axis : 0.7071 0 0 -0.7071 -->
@@ -128,11 +128,11 @@
                   group="0"
                   condim="4"
                   material="bmetal"/>
-            <site name="obj_handle_site" rgba="1 0 0 1" size="0.005" pos="0.054 0 0"/>
+            <!-- <site name="obj_handle_site" rgba="1 0 0 1" size="0.005" pos="0.054 0 0"/>
             <site name="obj_center_site" rgba="1 0 0 1" size="0.003" pos="0 0 0"/>
             <site name="obj_bottom_site" rgba="0 0 0 0" size="0.005" pos="0 0 -0.05"/>
             <site name="obj_top_site" rgba="0 0 0 0" size="0.005" pos="0 0 0.01"/>
-            <site name="obj_horizontal_radius_site" rgba="0 0 0 0" size="0.005" pos="0.11 0.06 0"/>
+            <site name="obj_horizontal_radius_site" rgba="0 0 0 0" size="0.005" pos="0.11 0.06 0"/> -->
         </body>
     </xacro:macro>
 
