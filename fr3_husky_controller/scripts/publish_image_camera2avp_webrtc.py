@@ -216,8 +216,8 @@ async def main_async():
     tmp_node = Node("camera_webrtc_param_loader")
     tmp_node.declare_parameter("host", "0.0.0.0")
     tmp_node.declare_parameter("port", 8080)
-    tmp_node.declare_parameter("max_fps", 12.0)
-    tmp_node.declare_parameter("max_width", 480)
+    tmp_node.declare_parameter("max_fps", 30.0)
+    tmp_node.declare_parameter("max_width", 640)
 
     host = str(tmp_node.get_parameter("host").value)
     port = int(tmp_node.get_parameter("port").value)
