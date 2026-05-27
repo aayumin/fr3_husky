@@ -142,7 +142,8 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         double dt_{0.0};
         double play_time_{0.0};
         double avp_task_start_time_{-1.0};
-        bool task_success_shutdown_requested_{false};
+        double task_timeout_{300.0}; // seconds
+        bool task_shutdown_requested_{false};
 
 
         const std::string arm_id_{"fr3"};

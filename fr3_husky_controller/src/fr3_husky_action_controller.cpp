@@ -871,6 +871,10 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     {
         auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
         bool isSuccess = false;
+        const double now = get_node()->now().seconds();
+        const double elapsed = avp_task_start_time_ > 0.0 ? now - avp_task_start_time_ : -1.0;
+
+        // is_success
         {
             std::lock_guard<std::mutex> lock(world.dataMutex());
             mjModel* mj_model = world.model();
@@ -882,17 +886,28 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
             }
         }
 
-        if (isSuccess && !task_success_shutdown_requested_)
+        if (isSuccess && !task_shutdown_requested_)
         {
-            task_success_shutdown_requested_ = true;
+            task_shutdown_requested_ = true;
 
-            const double now = get_node()->now().seconds();
-            const double elapsed = avp_task_start_time_ > 0.0 ? now - avp_task_start_time_ : -1.0;
 
             if (elapsed >= 0.0)
                 RCLCPP_INFO(get_node()->get_logger(), "[TaskSuccess] elapsed_time=%.3f sec", elapsed);
             else
                 RCLCPP_INFO(get_node()->get_logger(), "[TaskSuccess] elapsed_time=unknown");
+        }
+
+        // timeout
+        if (elapsed >= 0.0 && elapsed >= task_timeout_)
+        {
+            task_shutdown_requested_ = true;
+            RCLCPP_INFO(get_node()->get_logger(), "[TaskTimeout] elapsed_time=%.3f sec exceeds timeout of %.3f sec", elapsed, task_timeout_);
+        }
+
+
+
+        // shutdown if success or timeout
+        if (task_shutdown_requested_){
 
             if (active_task_)
             {
@@ -908,6 +923,7 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
                 rclcpp::shutdown();
             }).detach();
         }
+
     }
 
 
@@ -993,7 +1009,6 @@ bool FR3HuskyActionController::isSiteNearSite(mjModel* model, mjData* data,
 
     Eigen::Vector3d p_a(data->site_xpos[3 * id_a + 0], data->site_xpos[3 * id_a + 1], data->site_xpos[3 * id_a + 2]);
     Eigen::Vector3d p_b(data->site_xpos[3 * id_b + 0], data->site_xpos[3 * id_b + 1], data->site_xpos[3 * id_b + 2]);
-
 
     return (p_a - p_b).norm() < threshold;
 }
