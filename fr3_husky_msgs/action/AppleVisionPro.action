@@ -5,6 +5,7 @@ string right_controller_ee_name           # EE name for tracking right vive cont
 bool left_tracking_mode_on True           # start tracking left EE or not (default: True)
 bool right_tracking_mode_on True          # start tracking right EE or not (default: True)
 bool move_orientation False               # move EE orientation or not (default: False)
+bool constraint_yaw_only False            # rotation constraint to allow only yaw direction (default: False)
 float32 controller_pos_multiplier 1.0     # multiplier for target position from vive controller (default: 1.0)
 float32 controller_ori_multiplier 1.0     # multiplier for target orientation from vive controller (default: 1.0)
 

@@ -113,9 +113,9 @@ private:
     bool is_first_target_right_ = true;
     Eigen::Affine3d smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt);
     double max_linear_vel_ = 0.1;   // m/s
-    double max_angular_vel_ = 0.5;  // rad/s
+    double max_angular_vel_ = 1.0;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
-    double MAX_ROT_DELTA = 0.15;
+    double MAX_ROT_DELTA = 0.6;
     Eigen::Vector6d computeTargetVelocity(const Eigen::Affine3d& prev, const Eigen::Affine3d& cur, double dt);
 
 
@@ -159,6 +159,7 @@ private:
     std::string left_controller_ee_name_;  // EE name for tracking left AVP controller
     std::string right_controller_ee_name_; // EE name for tracking right AVP controller
     bool move_ori_;
+    bool constraint_yaw_only_;
     double controller_pos_multiplier_;
     double controller_ori_multiplier_;
 
