@@ -115,6 +115,7 @@ private:
     double max_linear_vel_ = 0.1;   // m/s
     double max_angular_vel_ = 0.5;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
+    double MAX_ROT_DELTA = 0.15;
     Eigen::Vector6d computeTargetVelocity(const Eigen::Affine3d& prev, const Eigen::Affine3d& cur, double dt);
 
 
@@ -141,7 +142,7 @@ private:
     void resetRealtimeTracking();
 
 
-
+    int dbg_cnt = 0;
     int total_elapsed_steps = 0;
 
     Eigen::Affine3d world_from_base_init_{Eigen::Affine3d::Identity()};
