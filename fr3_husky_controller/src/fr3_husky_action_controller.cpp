@@ -689,7 +689,7 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     is_halted_ = false;
 
     play_time_ = get_node()->now().seconds();
-    control_start_time_ = play_time_;
+    avp_task_start_time_ = -1.0;
 
 
 
@@ -793,6 +793,11 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
             {
                 active_task_ = best;
                 active_task_->onActivated();
+
+                if (active_task_->getName().find("AVP") != std::string::npos && avp_task_start_time_ < 0.0)
+                {
+                    avp_task_start_time_ = get_node()->now().seconds();
+                }
             }
             else if (best.get() != active_task_.get())
             {
@@ -809,6 +814,12 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
 
                     active_task_ = best;
                     active_task_->onActivated();
+
+
+                    if (active_task_->getName().find("AVP") != std::string::npos && avp_task_start_time_ < 0.0)
+                    {
+                        avp_task_start_time_ = get_node()->now().seconds();
+                    }
                 }
                 else
                 {
@@ -854,6 +865,51 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     {
         if (idle_control_) idle_control_->compute(time, period);
     }
+
+
+    // 5. sucess check
+    {
+        auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
+        bool isSuccess = false;
+        {
+            std::lock_guard<std::mutex> lock(world.dataMutex());
+            mjModel* mj_model = world.model();
+            mjData* mj_data = world.data();
+
+            if (mj_model && mj_data)
+            {
+                isSuccess = isSiteNearSite(mj_model, mj_data, "obj_success_site", "goal_success_site", 0.035);
+            }
+        }
+
+        if (isSuccess && !task_success_shutdown_requested_)
+        {
+            task_success_shutdown_requested_ = true;
+
+            const double now = get_node()->now().seconds();
+            const double elapsed = avp_task_start_time_ > 0.0 ? now - avp_task_start_time_ : -1.0;
+
+            if (elapsed >= 0.0)
+                RCLCPP_INFO(get_node()->get_logger(), "[TaskSuccess] elapsed_time=%.3f sec", elapsed);
+            else
+                RCLCPP_INFO(get_node()->get_logger(), "[TaskSuccess] elapsed_time=unknown");
+
+            if (active_task_)
+            {
+                active_task_->onDeactivated();
+                active_task_.reset();
+            }
+
+            model_updater_->haltCommands();
+
+            std::thread([node = get_node()]()
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                rclcpp::shutdown();
+            }).detach();
+        }
+    }
+
 
 
     const bool estop_pressed =
@@ -911,7 +967,36 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     return controller_interface::return_type::OK;
 }
 
+bool FR3HuskyActionController::isBodyNearBody(mjModel* model, mjData* data,
+                    const std::string& body_a,
+                    const std::string& body_b,
+                    double threshold)
+{
+    const int id_a = mj_name2id(model, mjOBJ_BODY, body_a.c_str());
+    const int id_b = mj_name2id(model, mjOBJ_BODY, body_b.c_str());
+    if (id_a < 0 || id_b < 0) return false;
 
+    Eigen::Vector3d p_a(data->xpos[3 * id_a + 0], data->xpos[3 * id_a + 1], data->xpos[3 * id_a + 2]);
+    Eigen::Vector3d p_b(data->xpos[3 * id_b + 0], data->xpos[3 * id_b + 1], data->xpos[3 * id_b + 2]);
+
+    return (p_a - p_b).norm() < threshold;
+}
+
+bool FR3HuskyActionController::isSiteNearSite(mjModel* model, mjData* data,
+                    const std::string& site_a,
+                    const std::string& site_b,
+                    double threshold)
+{
+    const int id_a = mj_name2id(model, mjOBJ_SITE, site_a.c_str());
+    const int id_b = mj_name2id(model, mjOBJ_SITE, site_b.c_str());
+    if (id_a < 0 || id_b < 0) return false;
+
+    Eigen::Vector3d p_a(data->site_xpos[3 * id_a + 0], data->site_xpos[3 * id_a + 1], data->site_xpos[3 * id_a + 2]);
+    Eigen::Vector3d p_b(data->site_xpos[3 * id_b + 0], data->site_xpos[3 * id_b + 1], data->site_xpos[3 * id_b + 2]);
+
+
+    return (p_a - p_b).norm() < threshold;
+}
 
 bool FR3HuskyActionController::setJointIndex(const std::string& urdf_xml, drc::MobileManipulator::JointIndex& out_idx)
 {

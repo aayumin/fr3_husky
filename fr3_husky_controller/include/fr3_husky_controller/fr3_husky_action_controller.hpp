@@ -24,6 +24,8 @@
 #include <utility>
 #include <cstdlib>
 
+#include <mujoco/mujoco.h>
+
 #if __cplusplus < 201703L
 // Fallback for toolchains/IntelliSense not using C++17.
 namespace std 
@@ -139,9 +141,19 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         size_t num_robots_{0}; // number of FR3 arms
         double dt_{0.0};
         double play_time_{0.0};
-        double control_start_time_{0.0};
+        double avp_task_start_time_{-1.0};
+        bool task_success_shutdown_requested_{false};
+
 
         const std::string arm_id_{"fr3"};
+
+
+
+        // ========================================================================
+        // ========================== Task Success Check ==========================
+        // ========================================================================
+        bool isBodyNearBody(mjModel* model, mjData* data, const std::string& body_a, const std::string& body_b, double threshold);
+        bool isSiteNearSite(mjModel* model, mjData* data, const std::string& site_a, const std::string& site_b, double threshold);
 
 
 
