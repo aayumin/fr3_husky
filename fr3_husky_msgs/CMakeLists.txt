@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "action/ViveTracker.action"
     "action/MobileMove.action"
     "action/AppleVisionPro.action"
+    "action/KeyboardMove.action"
     "action/GripperCommand.action"
     "action/HuskyPedal.action"
      DEPENDENCIES geometry_msgs std_msgs
