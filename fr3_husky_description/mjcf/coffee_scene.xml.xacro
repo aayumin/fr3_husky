@@ -209,6 +209,7 @@
                       friction="0.95 0.3 0.1"
                       solref="0.02 1"
                       solimp="0.998 0.998 0.001"/>
+            <site name="goal_success_site" rgba="1 0 0 1" size="0.005" pos="0 0 -0.021"/>
             </body>
 
         </body>
@@ -227,9 +228,10 @@
                   group="0"
                   condim="4"
                   material="obj_yellow"/>
-            <site name="obj_bottom_site" rgba="0 0 0 0" size="0.005" pos="0 0 -0.023103"/>
-            <site name="obj_top_site" rgba="0 0 0 0" size="0.005" pos="0 0 0.023103"/>
-            <site name="obj_horizontal_radius_site" rgba="0 0 0 0" size="0.005" pos="0.0243 0.0243 0"/>
+            <site name="obj_success_site" rgba="1 0 0 1" size="0.005" pos="0 0 -0.023103"/>
+            <!-- <site name="obj_bottom_site" rgba="0 0 0 0" size="0.005" pos="0 0 -0.023103"/> -->
+            <!-- <site name="obj_top_site" rgba="0 0 0 0" size="0.005" pos="0 0 0.023103"/> -->
+            <!-- <site name="obj_horizontal_radius_site" rgba="0 0 0 0" size="0.005" pos="0.0243 0.0243 0"/> -->
         </body>
     </xacro:macro>
 
