@@ -191,10 +191,13 @@
         <texture file="$(find fr3_husky_description)/textures/old-paper-wall.png" type="2d" name="tex-old-paper-wall"/>
         <texture file="$(find fr3_husky_description)/textures/white-space.png" type="2d" name="tex-white-space"/>
         <texture file="$(find fr3_husky_description)/textures/white-wood.png" type="2d" name="tex-white-wood"/>
+        <texture file="$(find fr3_husky_description)/textures/bleached-wood.png" type="2d" name="tex-bleached-wood"/>
         <material name="obj_red" rgba="0.72 0.28 0.25 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>   
         <material name="obj_blue" rgba="0.28 0.42 0.72 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>
         <material name="obj_green" rgba="0.32 0.60 0.38 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>
         <material name="obj_yellow" rgba="0.78 0.66 0.25 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>
+        <material name="matte_black" rgba="0.13 0.13 0.13 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-bleached-wood"/>
+        <material name="matte_ivory" rgba="0.839 0.839 0.839 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-bleached-wood"/>
         <material name="matte_wood_dark" rgba="0.47 0.39 0.30 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-wood"/>
         <material name="matte_wood_light" rgba="0.72 0.62 0.51 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-wood"/>
 

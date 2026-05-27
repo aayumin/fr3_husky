@@ -74,7 +74,7 @@
                       group="0"
                       condim="4"
                       rgba="0.13 0.13 0.13 1"
-                      material="ceramic"/>
+                      material="matte_black"/>
             </body>
 
             <body name="coffee_machine_lid_main" pos="0 0.0385 0.144105" quat="0.5 0.8660254 0 0">
@@ -89,7 +89,7 @@
                       group="0"
                       condim="4"
                       rgba="0.839 0.839 0.839 1"
-                      material="ceramic"/>
+                      material="matte_ivory"/>
             </body>
 
             <body name="coffee_machine_base_root" pos="0 0.0 -0.1055" quat="0 0 0 1">
@@ -104,7 +104,7 @@
                       group="0"
                       condim="4"
                       rgba="0.13 0.13 0.13 1"
-                      material="ceramic"/>
+                      material="matte_black"/>
             </body>
 
             <body name="coffee_machine_pod_holder_holder_root" pos="0 0.06355 0.0865">
