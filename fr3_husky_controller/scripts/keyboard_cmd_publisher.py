@@ -35,6 +35,8 @@ def read_key():
             return "right"
         return "esc"
 
+    if c == " ": return "space"
+
     return c
 
 
@@ -47,6 +49,8 @@ def main():
 
     try:
         print("Keyboard publisher started. q: quit")
+        print("1:left, 2:right | a:X, s:Y, space:Z | i:roll, o:pitch, p:yaw | ↑/↓:+/- | g:gripper")
+
         while rclpy.ok():
             key = read_key()
             node.publish_key(key)

@@ -34,6 +34,23 @@
 #define IDX_LEFT_CON    0 // index of left
 #define IDX_RIGHT_CON   1 // index of right
 
+enum class KeyboardArm
+{
+    LEFT,
+    RIGHT
+};
+
+enum class KeyboardDirection
+{
+    NONE,
+    X,
+    Y,
+    Z,
+    ROLL,
+    PITCH,
+    YAW
+};
+
 namespace fr3_husky_controller::servers::fr3_husky
 {
     /*
@@ -77,10 +94,16 @@ private:
 private:
 
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr keyboard_sub_;
+
+    KeyboardArm selected_keyboard_arm_{KeyboardArm::RIGHT};
+    KeyboardDirection selected_keyboard_direction_{KeyboardDirection::NONE};
+
+    int keyboard_sign_{0};
+    bool keyboard_gripper_toggle_{false};
+    bool prev_keyboard_gripper_toggle_{false};
+
     void clearKeyboardFlags();
     void onKeyboardCommand(const std_msgs::msg::String::SharedPtr msg);
-
-
 
     std::mutex lock_;
     

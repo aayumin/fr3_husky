@@ -331,6 +331,13 @@ void KeyboardMove::onStart()
     keypress_left_arm_gripper_ = keypress_right_arm_gripper_ = false;
     last_key_time_ = 0.0;  
 
+
+    selected_keyboard_arm_ = KeyboardArm::RIGHT;
+    selected_keyboard_direction_ = KeyboardDirection::NONE;
+    keyboard_sign_ = 0;
+    keyboard_gripper_toggle_ = false;
+    prev_keyboard_gripper_toggle_ = false;
+
     if (!keyboard_sub_)
     {
         keyboard_sub_ = node_->create_subscription<std_msgs::msg::String>(
@@ -349,18 +356,9 @@ void KeyboardMove::onStart()
 
 void KeyboardMove::clearKeyboardFlags()
 {
-    keypress_left_arm_left_ = keypress_left_arm_right_ = false;
-    keypress_left_arm_forward_ = keypress_left_arm_backward_ = false;
-    keypress_left_arm_upward_ = keypress_left_arm_downward_ = false;
-
-    keypress_right_arm_left_ = keypress_right_arm_right_ = false;
-    keypress_right_arm_forward_ = keypress_right_arm_backward_ = false;
-    keypress_right_arm_upward_ = keypress_right_arm_downward_ = false;
-
-    keypress_left_arm_gripper_ = false;
-    keypress_right_arm_gripper_ = false;
+    keyboard_sign_ = 0;
+    keyboard_gripper_toggle_ = false;
 }
-
 void KeyboardMove::onKeyboardCommand(const std_msgs::msg::String::SharedPtr msg)
 {
     if (!msg) return;
@@ -370,17 +368,20 @@ void KeyboardMove::onKeyboardCommand(const std_msgs::msg::String::SharedPtr msg)
 
     const std::string& key = msg->data;
 
-    if (key == "up") keypress_right_arm_forward_ = true;
-    else if (key == "down") keypress_right_arm_backward_ = true;
-    else if (key == "left") keypress_right_arm_left_ = true;
-    else if (key == "right") keypress_right_arm_right_ = true;
-    else if (key == "o") keypress_right_arm_downward_ = true;
-    else if (key == "p") keypress_right_arm_upward_ = true;
-    else if (key == "i") keypress_right_arm_gripper_ = true;
+    if (key == "1") selected_keyboard_arm_ = KeyboardArm::LEFT;
+    else if (key == "2") selected_keyboard_arm_ = KeyboardArm::RIGHT;
+    else if (key == "a") selected_keyboard_direction_ = KeyboardDirection::X;
+    else if (key == "s") selected_keyboard_direction_ = KeyboardDirection::Y;
+    else if (key == "space") selected_keyboard_direction_ = KeyboardDirection::Z;
+    else if (key == "i") selected_keyboard_direction_ = KeyboardDirection::ROLL;
+    else if (key == "o") selected_keyboard_direction_ = KeyboardDirection::PITCH;
+    else if (key == "p") selected_keyboard_direction_ = KeyboardDirection::YAW;
+    else if (key == "up") keyboard_sign_ = 1;
+    else if (key == "down") keyboard_sign_ = -1;
+    else if (key == "g") keyboard_gripper_toggle_ = true;
 
     last_key_time_ = now_sec_();
 }
-
 KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
 
@@ -398,39 +399,27 @@ KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, cons
 
 
     // ============================================================
-    // 0) Keyboard input -> EE 목표(goal) 업데이트
+    // 0) Keyboard input
     // ============================================================
-    const double tnow = now_sec_();
-    const bool key_active = (tnow - last_key_time_) < key_timeout_;
-
-    bool l_fwd = false, l_back = false, l_left = false, l_right = false;
-    bool r_fwd = false, r_back = false, r_left = false, r_right = false;
-    bool l_up = false, l_down = false, r_up = false, r_down = false;
-    bool l_gtoggle = false, r_gtoggle = false;
+    KeyboardArm selected_arm;
+    KeyboardDirection selected_direction;
+    int sign = 0;
+    bool gripper_toggle = false;
 
     {
-    std::lock_guard<std::mutex> lk(lock_);
-    l_fwd   = keypress_left_arm_forward_;
-    l_back  = keypress_left_arm_backward_;
-    l_left  = keypress_left_arm_left_;
-    l_right = keypress_left_arm_right_;
-    l_up    = keypress_left_arm_upward_;
-    l_down  = keypress_left_arm_downward_;
-
-    r_fwd   = keypress_right_arm_forward_;
-    r_back  = keypress_right_arm_backward_;
-    r_left  = keypress_right_arm_left_;
-    r_right = keypress_right_arm_right_;
-    r_up    = keypress_right_arm_upward_;
-    r_down  = keypress_right_arm_downward_;
-
-    l_gtoggle  = keypress_left_arm_gripper_;
-    r_gtoggle  = keypress_right_arm_gripper_;
+        std::lock_guard<std::mutex> lk(lock_);
+        selected_arm = selected_keyboard_arm_;
+        selected_direction = selected_keyboard_direction_;
+        sign = keyboard_sign_;
+        gripper_toggle = keyboard_gripper_toggle_;
     }
 
-    const bool l_any = l_fwd || l_back || l_left || l_right || l_up || l_down;
-    const bool r_any = r_fwd || r_back || r_left || r_right || r_up || r_down;
-    const bool user_cmd = key_active && (l_any || r_any);
+    const double tnow = now_sec_();
+    const bool key_active = (tnow - last_key_time_) < key_timeout_;
+    const bool user_cmd = key_active && sign != 0 && selected_direction != KeyboardDirection::NONE;
+
+    const double pos_step = 0.15 * fr3_husky_model_updater_.dt_;
+    const double rot_step = 0.5 * fr3_husky_model_updater_.dt_;
     const double offset = 0.15 * fr3_husky_model_updater_.dt_;
 
 
@@ -438,60 +427,76 @@ KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, cons
     // ============================================================
     // 2) goal 갱신(입력 있는 경우에만) + target 생성(smoothing / hold latch)
     // ============================================================
-
-    const bool released = (user_cmd_prev_ == true) && (user_cmd == false);
-    user_cmd_prev_ = user_cmd;
-    if (released) {
-
-        x_target_l_ = fr3_husky_model_updater_.robot_data_->getPose(left_controller_ee_name_);
-        x_target_r_ = fr3_husky_model_updater_.robot_data_->getPose(right_controller_ee_name_);
-        x_goal_l_ = fr3_husky_model_updater_.robot_data_->getPose(left_controller_ee_name_);
-        x_goal_r_ = fr3_husky_model_updater_.robot_data_->getPose(right_controller_ee_name_);
-        hold_latched_ = true;
-    }
-
-
-    if (key_active)
+    if (user_cmd)
     {
-        if (l_fwd)   x_goal_l_.translation().x() += offset;
-        if (l_back)  x_goal_l_.translation().x() -= offset;
-        if (l_left)  x_goal_l_.translation().y() += offset;
-        if (l_right) x_goal_l_.translation().y() -= offset;
-        if (l_up)    x_goal_l_.translation().z() += offset;
-        if (l_down)  x_goal_l_.translation().z() -= offset;
+        Eigen::Affine3d& x_goal =
+            selected_arm == KeyboardArm::LEFT ? x_goal_l_ : x_goal_r_;
 
-        if (r_fwd)   x_goal_r_.translation().x() += offset;
-        if (r_back)  x_goal_r_.translation().x() -= offset;
-        if (r_left)  x_goal_r_.translation().y() += offset;
-        if (r_right) x_goal_r_.translation().y() -= offset;
-        if (r_up)    x_goal_r_.translation().z() += offset;
-        if (r_down)  x_goal_r_.translation().z() -= offset;
+        switch (selected_direction)
+        {
+            case KeyboardDirection::X:
+                x_goal.translation().x() += sign * pos_step;
+                break;
+            case KeyboardDirection::Y:
+                x_goal.translation().y() += sign * pos_step;
+                break;
+            case KeyboardDirection::Z:
+                x_goal.translation().z() += sign * pos_step;
+                break;
+            case KeyboardDirection::ROLL:
+                x_goal.linear() = x_goal.linear() * Eigen::AngleAxisd(sign * rot_step, Eigen::Vector3d::UnitX()).toRotationMatrix();
+                break;
+            case KeyboardDirection::PITCH:
+                x_goal.linear() = x_goal.linear() * Eigen::AngleAxisd(sign * rot_step, Eigen::Vector3d::UnitY()).toRotationMatrix();
+                break;
+            case KeyboardDirection::YAW:
+                x_goal.linear() = x_goal.linear() * Eigen::AngleAxisd(sign * rot_step, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+                break;
+            default:
+                break;
+        }
     }
+
 
     const double alpha = 0.25;
+
     x_target_l_.translation() = (1.0 - alpha) * x_target_l_.translation() + alpha * x_goal_l_.translation();
     x_target_r_.translation() = (1.0 - alpha) * x_target_r_.translation() + alpha * x_goal_r_.translation();
 
-    x_target_l_.linear() = ee_data_[left_controller_ee_name_].x_init.linear();
-    x_target_r_.linear() = ee_data_[right_controller_ee_name_].x_init.linear();
+    x_target_l_.linear() = x_goal_l_.linear();
+    x_target_r_.linear() = x_goal_r_.linear();
 
+    if (!left_controller_ee_name_.empty())
+    {
+        ee_data_[left_controller_ee_name_].x_desired = x_target_l_;
+        ee_data_[left_controller_ee_name_].xdot_desired.setZero();
+    }
+
+    if (!right_controller_ee_name_.empty())
+    {
+        ee_data_[right_controller_ee_name_].x_desired = x_target_r_;
+        ee_data_[right_controller_ee_name_].xdot_desired.setZero();
+    }
+
+
+
+    // ============================================================
+    // 3) gripper control
+    // ============================================================
 
 
     // Gripper control
     {
-        const bool l_gripper_pressed = key_active && l_gtoggle && !prev_l_gtoggle_;
-        const bool r_gripper_pressed = key_active && r_gtoggle && !prev_r_gtoggle_;
-
-        prev_l_gtoggle_ = key_active && l_gtoggle;
-        prev_r_gtoggle_ = key_active && r_gtoggle;
-
+        const bool gripper_pressed = key_active && gripper_toggle && !prev_keyboard_gripper_toggle_;
+        prev_keyboard_gripper_toggle_ = key_active && gripper_toggle;
+        
 
         // Left controller
         if (!left_controller_ee_name_.empty())
         {   
 
             // TODO:   gripper toggle key pressed
-            if (l_gripper_pressed)
+            if (gripper_pressed && selected_arm == KeyboardArm::LEFT)
             {
                 const std::string robot_name = getRobotNameFromEEName(left_controller_ee_name_);
                 if (!robot_name.empty())
@@ -524,7 +529,7 @@ KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, cons
         {
 
             // TODO:   gripper toggle key pressed
-            if (r_gripper_pressed)
+            if (gripper_pressed && selected_arm == KeyboardArm::RIGHT)
             {
                 const std::string robot_name = getRobotNameFromEEName(right_controller_ee_name_);
                 if (!robot_name.empty())
@@ -550,26 +555,6 @@ KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, cons
                     }
                 }
             }
-        }
-    }
-
-    // Manipulator control
-    if (user_cmd && (l_any || r_any)) {   
-
-        if(!left_controller_ee_name_.empty() && l_any) // left Keyboard controller
-        {
-            Eigen::Vector6d target_vel = Eigen::Vector6d::Zero();
-            ee_data_[left_controller_ee_name_].x_desired = x_target_l_;
-            ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
-
-        }
-
-
-        if(!right_controller_ee_name_.empty() && r_any) // right Keyboard controller
-        {
-            Eigen::Vector6d target_vel = Eigen::Vector6d::Zero();
-            ee_data_[right_controller_ee_name_].x_desired = x_target_r_;
-            ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
         }
     }
 
