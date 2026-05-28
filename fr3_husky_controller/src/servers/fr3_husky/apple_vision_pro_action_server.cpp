@@ -636,7 +636,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 }
                 else
                 {
-                    
+                
 
 
                     const Eigen::Matrix3d R_base_from_avp = getBaseFromAVPPositionMap();
@@ -753,10 +753,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                             const Eigen::Matrix3d R_world_from_eef_des = R_world_from_eef_delta * ee_data_[left_controller_ee_name_].x_init.linear();
                             target_pose_diff.linear() = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
                         }
-
-
                     }
-                
+            
                 // smoothed target pose
                 Eigen::Affine3d raw_target = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
                 double dt = fr3_husky_model_updater_.dt_;
@@ -774,15 +772,15 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
 
 
-            
+        
 
                 }
             }
         }
 
 
-        
     
+
         if(!right_controller_ee_name_.empty()) // right AVP controller
         {
             Eigen::Affine3d target_pose_diff; // EE init -> EE desired
@@ -926,9 +924,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                             // raw_target = x_init * target_pose_diff
                             target_pose_diff.linear() = ee_data_[right_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
                         }
-
-
-
                     }
                 }                
 
@@ -947,139 +942,135 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                 ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
 
-
-
-
-                
-                }
-
             }
+
         }
-    
-        bool is_qp_solved = true;
-        std::string time_verbose = "";
-
-        Eigen::VectorXd qdot_mobile = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
-
-        switch (control_mode_)
-        {
-            case 0: // CLIK
-                {   
-                    const Eigen::VectorXd null_qdot_mani =
-                        Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
-
-                    // --- Mobile null_qdot: drive mobile toward EE target (compensates for arm homing) ---
-                    // As arm is pulled toward home by null space, EE error grows → mobile drives to fill the gap
-                    Eigen::Vector3d avg_ee_pos_error = Eigen::Vector3d::Zero();
-                    int ee_count = 0;
-                    for(const auto& [ee_name, ee_data] : ee_data_)
-                    {
-                        avg_ee_pos_error += ee_data.x_desired.translation() - ee_data.x.translation();
-                        ++ee_count;
-                    }
-                    if(ee_count > 0) avg_ee_pos_error /= ee_count;
-
-
-                    const Eigen::Affine3d world2base_cur = fr3_husky_model_updater_.robot_data_->getPose("base_link");
-                    const Eigen::Vector3d ee_error_base = world2base_cur.linear().transpose() * avg_ee_pos_error;
-                    static constexpr double mobile_null_gain = 10.0; // [wheel_vel/m]: tune as needed
-                    Eigen::Vector3d base_vel_null;
-                    base_vel_null << ee_error_base(0), 0.0, 0.0; // Husky cannot strafe (y=0)
-                    // const Eigen::VectorXd null_qdot_mobile =
-                    //     fr3_husky_model_updater_.robot_controller_->MobileVelocityCommand(mobile_null_gain * base_vel_null);
-
-                    const Eigen::VectorXd null_qdot_mobile =
-                        Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
-
-                    // --- Assemble null_qdot via ActuatorIndex ---
-                    Eigen::VectorXd null_qdot(fr3_husky_model_updater_.robot_data_->getActuatorDof());
-                    const auto& act_idx = fr3_husky_model_updater_.robot_data_->getActuatorIndex();
-                    null_qdot.segment(act_idx.mobi_start, fr3_husky_model_updater_.mobile_dof_) = null_qdot_mobile;
-                    null_qdot.segment(act_idx.mani_start, fr3_husky_model_updater_.manipulator_dof_)      = null_qdot_mani;
-
-                    fr3_husky_model_updater_.robot_controller_->CLIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, null_qdot);
-                    fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ +
-                                                                fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
-                    fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
-
-
-                    break;
-                }
-            case 1: // OSF
-                {
-                    Eigen::VectorXd null_torque(fr3_husky_model_updater_.robot_data_->getActuatorDof());
-                    null_torque.segment(
-                        fr3_husky_model_updater_.robot_data_->getActuatorIndex().mani_start,
-                        fr3_husky_model_updater_.manipulator_dof_) =
-                        Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
-                    // Null-space viscous damping: -kd * wheel_vel_ dissipates kinetic energy of the base
-                    static constexpr double mobile_null_damping = 10.0; // [N·m·s/rad]: tune as needed
-                    null_torque.segment(fr3_husky_model_updater_.robot_data_->getActuatorIndex().mobi_start, fr3_husky_model_updater_.mobile_dof_) =
-                        -mobile_null_damping * fr3_husky_model_updater_.wheel_vel_;
-
-
-                    Eigen::VectorXd wheel_acc_desired = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
-                    fr3_husky_model_updater_.robot_controller_->OSFStep(ee_data_,
-                                                                        wheel_acc_desired,
-                                                                        fr3_husky_model_updater_.torque_desired_total_,
-                                                                        null_torque);
-                    fr3_husky_model_updater_.wheel_vel_desired_ = fr3_husky_model_updater_.wheel_vel_ + wheel_acc_desired * fr3_husky_model_updater_.dt_;
-                    break;
-                }
-
-            case 2: // QPIK
-                {
-                    is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, time_verbose);
-                    if(!is_qp_solved)
-                    {
-                        fr3_husky_model_updater_.qdot_desired_total_.setZero();
-                        fr3_husky_model_updater_.wheel_vel_desired_.setZero();
-                    }
-                    fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
-                    fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
-                    break;
-                }
-
-
-                
-                
-            case 3: // QPID
-                {
-                    Eigen::VectorXd wheel_acc_desired = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
-                    is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIDStep(ee_data_, wheel_acc_desired, fr3_husky_model_updater_.torque_desired_total_, time_verbose);
-                    if(!is_qp_solved)
-                    {
-                        fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.g_total_;
-                        wheel_acc_desired.setZero();
-                    }
-                    fr3_husky_model_updater_.wheel_vel_desired_ = fr3_husky_model_updater_.wheel_vel_ + wheel_acc_desired * fr3_husky_model_updater_.dt_;
-                    break;
-                }
-
-
-                
-            default:
-                fr3_husky_model_updater_.qdot_desired_total_.setZero();
-                fr3_husky_model_updater_.torque_desired_total_.setZero();
-                fr3_husky_model_updater_.wheel_vel_desired_.setZero();
-                break;
-        }
-
-        fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_,
-            fr3_husky_model_updater_.wheel_vel_desired_);  // robot_controller automatically add gravity force
-    
-        auto fb = std::make_shared<ActionT::Feedback>();
-        fb->is_qp_solved = is_qp_solved;
-        fb->time_verbose = time_verbose;
-        publishFeedback(fb);
-
-        {
-            std::lock_guard<std::mutex> lock(gesture_state_mutex_);
-            prev_gesture_states_ = gesture_states_local;
-        }
-    
-        return ComputeResult::RUNNING;
     }
+
+    bool is_qp_solved = true;
+    std::string time_verbose = "";
+
+    Eigen::VectorXd qdot_mobile = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
+
+    switch (control_mode_)
+    {
+        case 0: // CLIK
+            {   
+                const Eigen::VectorXd null_qdot_mani =
+                    Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
+
+                // --- Mobile null_qdot: drive mobile toward EE target (compensates for arm homing) ---
+                // As arm is pulled toward home by null space, EE error grows → mobile drives to fill the gap
+                Eigen::Vector3d avg_ee_pos_error = Eigen::Vector3d::Zero();
+                int ee_count = 0;
+                for(const auto& [ee_name, ee_data] : ee_data_)
+                {
+                    avg_ee_pos_error += ee_data.x_desired.translation() - ee_data.x.translation();
+                    ++ee_count;
+                }
+                if(ee_count > 0) avg_ee_pos_error /= ee_count;
+
+
+                const Eigen::Affine3d world2base_cur = fr3_husky_model_updater_.robot_data_->getPose("base_link");
+                const Eigen::Vector3d ee_error_base = world2base_cur.linear().transpose() * avg_ee_pos_error;
+                static constexpr double mobile_null_gain = 10.0; // [wheel_vel/m]: tune as needed
+                Eigen::Vector3d base_vel_null;
+                base_vel_null << ee_error_base(0), 0.0, 0.0; // Husky cannot strafe (y=0)
+                // const Eigen::VectorXd null_qdot_mobile =
+                //     fr3_husky_model_updater_.robot_controller_->MobileVelocityCommand(mobile_null_gain * base_vel_null);
+
+                const Eigen::VectorXd null_qdot_mobile =
+                    Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
+
+                // --- Assemble null_qdot via ActuatorIndex ---
+                Eigen::VectorXd null_qdot(fr3_husky_model_updater_.robot_data_->getActuatorDof());
+                const auto& act_idx = fr3_husky_model_updater_.robot_data_->getActuatorIndex();
+                null_qdot.segment(act_idx.mobi_start, fr3_husky_model_updater_.mobile_dof_) = null_qdot_mobile;
+                null_qdot.segment(act_idx.mani_start, fr3_husky_model_updater_.manipulator_dof_)      = null_qdot_mani;
+
+                fr3_husky_model_updater_.robot_controller_->CLIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, null_qdot);
+                fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ +
+                                                            fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
+                fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
+
+
+                break;
+            }
+        case 1: // OSF
+            {
+                Eigen::VectorXd null_torque(fr3_husky_model_updater_.robot_data_->getActuatorDof());
+                null_torque.segment(
+                    fr3_husky_model_updater_.robot_data_->getActuatorIndex().mani_start,
+                    fr3_husky_model_updater_.manipulator_dof_) =
+                    Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
+                // Null-space viscous damping: -kd * wheel_vel_ dissipates kinetic energy of the base
+                static constexpr double mobile_null_damping = 10.0; // [N·m·s/rad]: tune as needed
+                null_torque.segment(fr3_husky_model_updater_.robot_data_->getActuatorIndex().mobi_start, fr3_husky_model_updater_.mobile_dof_) =
+                    -mobile_null_damping * fr3_husky_model_updater_.wheel_vel_;
+
+
+                Eigen::VectorXd wheel_acc_desired = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
+                fr3_husky_model_updater_.robot_controller_->OSFStep(ee_data_,
+                                                                    wheel_acc_desired,
+                                                                    fr3_husky_model_updater_.torque_desired_total_,
+                                                                    null_torque);
+                fr3_husky_model_updater_.wheel_vel_desired_ = fr3_husky_model_updater_.wheel_vel_ + wheel_acc_desired * fr3_husky_model_updater_.dt_;
+                break;
+            }
+
+        case 2: // QPIK
+            {
+                is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, time_verbose);
+                if(!is_qp_solved)
+                {
+                    fr3_husky_model_updater_.qdot_desired_total_.setZero();
+                    fr3_husky_model_updater_.wheel_vel_desired_.setZero();
+                }
+                fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
+                fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
+                break;
+            }
+
+
+            
+            
+        case 3: // QPID
+            {
+                Eigen::VectorXd wheel_acc_desired = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
+                is_qp_solved = fr3_husky_model_updater_.robot_controller_->QPIDStep(ee_data_, wheel_acc_desired, fr3_husky_model_updater_.torque_desired_total_, time_verbose);
+                if(!is_qp_solved)
+                {
+                    fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.g_total_;
+                    wheel_acc_desired.setZero();
+                }
+                fr3_husky_model_updater_.wheel_vel_desired_ = fr3_husky_model_updater_.wheel_vel_ + wheel_acc_desired * fr3_husky_model_updater_.dt_;
+                break;
+            }
+
+
+            
+        default:
+            fr3_husky_model_updater_.qdot_desired_total_.setZero();
+            fr3_husky_model_updater_.torque_desired_total_.setZero();
+            fr3_husky_model_updater_.wheel_vel_desired_.setZero();
+            break;
+    }
+
+    fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_,
+        fr3_husky_model_updater_.wheel_vel_desired_);  // robot_controller automatically add gravity force
+
+    auto fb = std::make_shared<ActionT::Feedback>();
+    fb->is_qp_solved = is_qp_solved;
+    fb->time_verbose = time_verbose;
+    publishFeedback(fb);
+
+    {
+        std::lock_guard<std::mutex> lock(gesture_state_mutex_);
+        prev_gesture_states_ = gesture_states_local;
+    }
+
+    return ComputeResult::RUNNING;
+}
 
 
 double AppleVisionPro::rotationDiff(const Eigen::Matrix3d& R_a, const Eigen::Matrix3d& R_b)
