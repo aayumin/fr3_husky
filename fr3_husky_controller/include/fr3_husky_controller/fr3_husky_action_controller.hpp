@@ -141,7 +141,7 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         size_t num_robots_{0}; // number of FR3 arms
         double dt_{0.0};
         double play_time_{0.0};
-        double avp_task_start_time_{-1.0};
+        double teleop_task_start_time_{-1.0};
         double task_timeout_{300.0}; // seconds
         bool task_shutdown_requested_{false};
 

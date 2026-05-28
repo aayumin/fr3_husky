@@ -419,8 +419,7 @@ KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, cons
     const bool user_cmd = key_active && sign != 0 && selected_direction != KeyboardDirection::NONE;
 
     const double pos_step = 0.15 * fr3_husky_model_updater_.dt_;
-    const double rot_step = 0.5 * fr3_husky_model_updater_.dt_;
-    const double offset = 0.15 * fr3_husky_model_updater_.dt_;
+    const double rot_step = 1.0 * fr3_husky_model_updater_.dt_;
 
 
 

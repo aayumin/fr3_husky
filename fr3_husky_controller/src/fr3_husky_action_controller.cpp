@@ -689,7 +689,7 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     is_halted_ = false;
 
     play_time_ = get_node()->now().seconds();
-    avp_task_start_time_ = -1.0;
+    teleop_task_start_time_ = -1.0;
 
 
 
@@ -786,6 +786,8 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
                 }
             }
         }
+        
+
 
         if (best)
         {
@@ -794,9 +796,9 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
                 active_task_ = best;
                 active_task_->onActivated();
 
-                if (active_task_->getName().find("AVP") != std::string::npos && avp_task_start_time_ < 0.0)
+                if ((active_task_->getName().find("AVP") != std::string::npos || active_task_->getName().find("keyboard") != std::string::npos) && teleop_task_start_time_ < 0.0)
                 {
-                    avp_task_start_time_ = get_node()->now().seconds();
+                    teleop_task_start_time_ = get_node()->now().seconds();
                 }
             }
             else if (best.get() != active_task_.get())
@@ -816,9 +818,9 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
                     active_task_->onActivated();
 
 
-                    if (active_task_->getName().find("AVP") != std::string::npos && avp_task_start_time_ < 0.0)
+                    if ((active_task_->getName().find("AVP") != std::string::npos || active_task_->getName().find("keyboard") != std::string::npos) && teleop_task_start_time_ < 0.0)
                     {
-                        avp_task_start_time_ = get_node()->now().seconds();
+                        teleop_task_start_time_ = get_node()->now().seconds();
                     }
                 }
                 else
@@ -872,7 +874,7 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
         bool isSuccess = false;
         const double now = get_node()->now().seconds();
-        const double elapsed = avp_task_start_time_ > 0.0 ? now - avp_task_start_time_ : -1.0;
+        const double elapsed = teleop_task_start_time_ > 0.0 ? now - teleop_task_start_time_ : -1.0;
 
         // is_success
         {
@@ -916,10 +918,11 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
             }
 
             model_updater_->haltCommands();
+            
 
             std::thread([node = get_node()]()
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(2500));
                 rclcpp::shutdown();
             }).detach();
         }
@@ -958,9 +961,13 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         std::lock_guard<std::mutex> lock(world.dataMutex());
         mjModel* mj_model = world.model();
         mjData* mj_data = world.data();
-        if ((scene_name.find("square") != std::string::npos) || (scene_name.find("coffee") != std::string::npos))
+        if (scene_name.find("square") != std::string::npos)
         {   
             randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, M_PI); // 0.78 -0.28 0.65
+        }
+        else if (scene_name.find("coffee") != std::string::npos)
+        {   
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.45, -0.25, 0.65, -M_PI, M_PI); // 0.78 -0.35 0.65
         }
         else if (scene_name.find("yaw") != std::string::npos)
         {   
