@@ -4,7 +4,7 @@ import xacro
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, Shutdown
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, Shutdown, LogInfo
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
@@ -72,6 +72,7 @@ def _launch_setup(context, *args, **kwargs):
     avp_frame_id         = LaunchConfiguration('avp_frame_id')
     launch_avp_image_bridge = LaunchConfiguration('launch_avp_image_bridge')
     avp_image_bridge_script = LaunchConfiguration('avp_image_bridge_script')
+    # recognized_speech_webrtc_script = LaunchConfiguration('recognized_speech_webrtc_script')
     avp_image_max_fps       = LaunchConfiguration('avp_image_max_fps')
 
     if not robot_sides:
@@ -90,11 +91,11 @@ def _launch_setup(context, *args, **kwargs):
     # URDF + MJCF paths 
     if is_dual:
         urdf_path = os.path.join(pkg_desc, 'robots', 'dual_fr3_husky.urdf.xacro')
-        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
-        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_square.xml.xacro')
-        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threading.xml.xacro')
-        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threepieceassembly.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
+        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_square.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threading.xml.xacro')   # too hard
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_yaw.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threepieceassembly.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_coffee.xml.xacro')
 
         xacro_mappings = {
@@ -259,7 +260,7 @@ def _launch_setup(context, *args, **kwargs):
                 '-p', ['host:=', '0.0.0.0'],
                 '-p', ['port:=', '8080'],
                 '-p', ['max_fps:=', avp_image_max_fps],
-                '-p', 'max_width:=480',
+                '-p', 'max_width:=640',
             ],
             name='camera2avp_webrtc',
             output='screen',
@@ -268,6 +269,32 @@ def _launch_setup(context, *args, **kwargs):
                 launch_avp_image_bridge, "' == 'true'",
             ])),
         ),
+        # ExecuteProcess(
+        #     cmd=[
+        #         'python3',
+        #         recognized_speech_webrtc_script,
+        #         '--host', '0.0.0.0',
+        #         '--port', '8081',
+        #         '--file', '/root/ssds_HL/recognized_speech.txt',
+        #         '--poll-hz', '20',
+        #     ],
+        #     name='speech_webrtc',
+        #     output='screen',
+        # ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                '-u',
+                '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/speech_webrtc.py',
+                '--host', '0.0.0.0',
+                '--port', '8081',
+                '--file', '/root/ssds_HL/recognized_speech.txt',
+                '--poll-hz', '20',
+            ],
+            output='screen',
+        )
+
+        
     ]
 
     # franka_robot_state_broadcaster: real hardware only (skip for fake or mujoco)
@@ -416,6 +443,10 @@ def generate_launch_description():
             default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp_webrtc.py']),
             description='Path to ROS-image to AVP WebRTC sender script',
         ),
-        DeclareLaunchArgument('avp_image_max_fps', default_value='12.0', description='Maximum per-stream WebRTC image send rate'),
+        # DeclareLaunchArgument(
+        #     'recognized_speech_webrtc_script',
+        #     default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'speech_webrtc.py']),
+        # ),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='30.0', description='Maximum per-stream WebRTC image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])
