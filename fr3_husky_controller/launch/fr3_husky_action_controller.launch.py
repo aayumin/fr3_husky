@@ -1,4 +1,7 @@
 import os
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+
 import yaml
 import xacro
 
@@ -10,7 +13,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-
 
 def _load_yaml(package_name, rel_path):
     path = os.path.join(get_package_share_directory(package_name), rel_path)
@@ -71,7 +73,7 @@ def _launch_setup(context, *args, **kwargs):
     avp_udp_port         = LaunchConfiguration('avp_udp_port')
     avp_frame_id         = LaunchConfiguration('avp_frame_id')
     launch_avp_image_bridge = LaunchConfiguration('launch_avp_image_bridge')
-    avp_image_bridge_script = LaunchConfiguration('avp_image_bridge_script')
+    # avp_image_bridge_script = LaunchConfiguration('avp_image_bridge_script')
     # recognized_speech_webrtc_script = LaunchConfiguration('recognized_speech_webrtc_script')
     avp_image_max_fps       = LaunchConfiguration('avp_image_max_fps')
 
@@ -92,11 +94,11 @@ def _launch_setup(context, *args, **kwargs):
     if is_dual:
         urdf_path = os.path.join(pkg_desc, 'robots', 'dual_fr3_husky.urdf.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
-        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_square.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_square.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threading.xml.xacro')   # too hard
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_yaw.xml.xacro')
         # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threepieceassembly.xml.xacro')
-        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_coffee.xml.xacro')
+        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_coffee.xml.xacro')
 
         xacro_mappings = {
             'ros2_control': 'true', 'with_sc': 'false', 'fix_finger': 'false',
@@ -156,14 +158,14 @@ def _launch_setup(context, *args, **kwargs):
 
     # Node list
     nodes = [
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            output='log',
-            arguments=['-d', os.path.join(pkg_ctrl, 'rviz', 'fr3_husky.rviz')],
-            parameters=[{'robot_description': robot_description}],
-        ),
+        # Node(
+        #     package='rviz2',
+        #     executable='rviz2',
+        #     name='rviz2',
+        #     output='log',
+        #     arguments=['-d', os.path.join(pkg_ctrl, 'rviz', 'fr3_husky.rviz')],
+        #     parameters=[{'robot_description': robot_description}],
+        # ),
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
@@ -255,32 +257,16 @@ def _launch_setup(context, *args, **kwargs):
         ExecuteProcess(
             cmd=[
                 'python3',
-                avp_image_bridge_script,
-                '--ros-args',
-                '-p', ['host:=', '0.0.0.0'],
-                '-p', ['port:=', '8080'],
-                '-p', ['max_fps:=', avp_image_max_fps],
-                '-p', 'max_width:=640',
+                '-u',
+                '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/publish_image_camera2avp_webrtc.py',
+                '--host', '0.0.0.0',
+                '--port', '8080',
+                '--max_fps', avp_image_max_fps,
+                '--max_width','640',
             ],
             name='camera2avp_webrtc',
             output='screen',
-            condition=IfCondition(PythonExpression([
-                "'", LaunchConfiguration('use_mujoco'), "' == 'true' and '",
-                launch_avp_image_bridge, "' == 'true'",
-            ])),
         ),
-        # ExecuteProcess(
-        #     cmd=[
-        #         'python3',
-        #         recognized_speech_webrtc_script,
-        #         '--host', '0.0.0.0',
-        #         '--port', '8081',
-        #         '--file', '/root/ssds_HL/recognized_speech.txt',
-        #         '--poll-hz', '20',
-        #     ],
-        #     name='speech_webrtc',
-        #     output='screen',
-        # ),
         ExecuteProcess(
             cmd=[
                 'python3',
@@ -438,15 +424,15 @@ def generate_launch_description():
         DeclareLaunchArgument('avp_udp_port',      default_value='5005', description='UDP bind port for AVP bridge'),
         DeclareLaunchArgument('avp_frame_id',      default_value='avp_world', description='Frame id used in tracker_pose header'),
         DeclareLaunchArgument('launch_avp_image_bridge', default_value='true', description='Launch MuJoCo camera image UDP sender for AVP'),
-        DeclareLaunchArgument(
-            'avp_image_bridge_script',
-            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp_webrtc.py']),
-            description='Path to ROS-image to AVP WebRTC sender script',
-        ),
+        # DeclareLaunchArgument(
+        #     'avp_image_bridge_script',
+        #     default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp_webrtc.py']),
+        #     description='Path to ROS-image to AVP WebRTC sender script',
+        # ),
         # DeclareLaunchArgument(
         #     'recognized_speech_webrtc_script',
         #     default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'speech_webrtc.py']),
         # ),
-        DeclareLaunchArgument('avp_image_max_fps', default_value='30.0', description='Maximum per-stream WebRTC image send rate'),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='15.0', description='Maximum per-stream WebRTC image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])
