@@ -25,8 +25,8 @@ class TextFileStreamer:
         while True:
             text = self.read_text()
             if text and text != self.last_text:
-                print(f"[WebRTC Text] file updated: {text}")
-                print(f"[WebRTC Text] channels: {len(self.channels)}")
+                # print(f"[WebRTC Text] file updated: {text}")
+                # print(f"[WebRTC Text] channels: {len(self.channels)}")
                 self.last_text = text
                 dead = []
                 for ch in self.channels:
