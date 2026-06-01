@@ -43,8 +43,8 @@ class AppleVisionProClient(Node):
         goal.move_orientation = True
         goal.constraint_yaw_only = self._yaw_only
         goal.controller_pos_multiplier = 1.0
-        goal.controller_ori_multiplier = 1.0
-        # goal.controller_ori_multiplier = 1.5
+        # goal.controller_ori_multiplier = 1.0
+        goal.controller_ori_multiplier = 2.0
 
         self.get_logger().info('Sending AppleVisionPro goal')
         future = self._client.send_goal_async(goal)
