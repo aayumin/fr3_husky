@@ -963,7 +963,8 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         mjData* mj_data = world.data();
         if (scene_name.find("square") != std::string::npos)
         {   
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, M_PI); // 0.78 -0.28 0.65
+            // randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, M_PI); // 0.78 -0.28 0.65
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, -M_PI/2.0); // 0.78 -0.28 0.65
         }
         else if (scene_name.find("coffee") != std::string::npos)
         {   
@@ -971,7 +972,8 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         }
         else if (scene_name.find("yaw") != std::string::npos)
         {   
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.5, -0.3, 0.65, -M_PI, M_PI); // 0.78 -0.4 0.65
+            // randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.5, -0.3, 0.65, -M_PI, M_PI); // 0.78 -0.4 0.65
+            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.5, -0.3, 0.65, -M_PI/4.0, M_PI/4.0); // 0.78 -0.4 0.65
         }
         else if (scene_name.find("threading") != std::string::npos)
         {
