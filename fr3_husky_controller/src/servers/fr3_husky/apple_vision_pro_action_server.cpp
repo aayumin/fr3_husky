@@ -672,7 +672,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     // }
 
                     // Clamp
-                    const double MAX_POS_DELTA = 0.2;
+                    const double MAX_POS_DELTA = 0.4;
                     for (int k = 0; k < 3; ++k)
                     {
                         if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
@@ -835,7 +835,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     // }
 
                     // Clamp
-                    const double MAX_POS_DELTA = 0.2;
+                    const double MAX_POS_DELTA = 0.4;
                     for (int k = 0; k < 3; ++k)
                     {
                         if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
@@ -883,6 +883,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                             }
                             const Eigen::Matrix3d R_world_from_eef_des = R_world_from_eef_delta * ee_data_[right_controller_ee_name_].x_init.linear();
                             target_pose_diff.linear() = ee_data_[right_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
+
                         }
 
 
