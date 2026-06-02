@@ -407,6 +407,8 @@ void AppleVisionPro::onStart()
 AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
 
+
+
     total_elapsed_steps++;
     dbg_cnt++;
 
@@ -566,7 +568,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
             while (head_pose_window_.size() > static_cast<size_t>(window_size)) head_pose_window_.pop_front();
         }
 
-
         if (!auto_tracking_started_ && tracker_value_valid)
         {
             const int window_size = std::max(2, static_cast<int>(stable_window_sec_ / fr3_husky_model_updater_.dt_));
@@ -587,6 +588,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
             if (stable_for_capture) ++num_steps_for_capture;
             else num_steps_for_capture = 0;
+
+
 
             if (num_steps_for_capture >= steps_until_capture_init_tracker)
             {
@@ -1066,6 +1069,9 @@ bool AppleVisionPro::isPoseWindowLiveAndStable(const std::deque<Eigen::Affine3d>
     const bool stable = pos_range < max_stable_p_range_ && max_rot_range < max_stable_r_range_;
 
 
+
+
+                
     return live && stable;
 }
 
@@ -1102,9 +1108,9 @@ void AppleVisionPro::resetRealtimeTracking()
     is_first_target_right_ = true;
 
 
-    fr3_husky_model_updater_.qdot_desired_total_.setZero();
-    fr3_husky_model_updater_.torque_desired_total_.setZero();
-    fr3_husky_model_updater_.wheel_vel_desired_.setZero();
+    // fr3_husky_model_updater_.qdot_desired_total_.setZero();
+    // fr3_husky_model_updater_.torque_desired_total_.setZero();
+    // fr3_husky_model_updater_.wheel_vel_desired_.setZero();
 }
 
 Eigen::Vector6d AppleVisionPro::computeTargetVelocity(

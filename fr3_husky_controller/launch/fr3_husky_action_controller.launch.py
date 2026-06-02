@@ -158,14 +158,14 @@ def _launch_setup(context, *args, **kwargs):
 
     # Node list
     nodes = [
-        # Node(
-        #     package='rviz2',
-        #     executable='rviz2',
-        #     name='rviz2',
-        #     output='log',
-        #     arguments=['-d', os.path.join(pkg_ctrl, 'rviz', 'fr3_husky.rviz')],
-        #     parameters=[{'robot_description': robot_description}],
-        # ),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='log',
+            arguments=['-d', os.path.join(pkg_ctrl, 'rviz', 'fr3_husky.rviz')],
+            parameters=[{'robot_description': robot_description}],
+        ),
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
@@ -254,31 +254,31 @@ def _launch_setup(context, *args, **kwargs):
             output='screen',
             condition=IfCondition(launch_avp_bridge),
         ),
-        ExecuteProcess(
-            cmd=[
-                'python3',
-                '-u',
-                '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/publish_image_camera2avp_webrtc.py',
-                '--host', '0.0.0.0',
-                '--port', '8080',
-                '--max_fps', avp_image_max_fps,
-                '--max_width','640',
-            ],
-            name='camera2avp_webrtc',
-            output='screen',
-        ),
-        ExecuteProcess(
-            cmd=[
-                'python3',
-                '-u',
-                '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/speech_webrtc.py',
-                '--host', '0.0.0.0',
-                '--port', '8081',
-                '--file', '/root/ssds_HL/recognized_speech.txt',
-                '--poll-hz', '20',
-            ],
-            output='screen',
-        )
+        # ExecuteProcess(
+        #     cmd=[
+        #         'python3',
+        #         '-u',
+        #         '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/publish_image_camera2avp_webrtc.py',
+        #         '--host', '0.0.0.0',
+        #         '--port', '8080',
+        #         '--max_fps', avp_image_max_fps,
+        #         '--max_width','640',
+        #     ],
+        #     name='camera2avp_webrtc',
+        #     output='screen',
+        # ),
+        # ExecuteProcess(
+        #     cmd=[
+        #         'python3',
+        #         '-u',
+        #         '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/speech_webrtc.py',
+        #         '--host', '0.0.0.0',
+        #         '--port', '8081',
+        #         '--file', '/root/ssds_HL/recognized_speech.txt',
+        #         '--poll-hz', '20',
+        #     ],
+        #     output='screen',
+        # )
 
         
     ]

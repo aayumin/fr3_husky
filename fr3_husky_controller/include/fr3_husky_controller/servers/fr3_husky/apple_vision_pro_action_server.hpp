@@ -112,8 +112,8 @@ private:
     bool is_first_target_left_ = true;
     bool is_first_target_right_ = true;
     Eigen::Affine3d smoothAndLimit(const Eigen::Affine3d& prev, const Eigen::Affine3d& target, double dt);
-    double max_linear_vel_ = 0.2;   // m/s
-    double max_angular_vel_ = 1.5;  // rad/s
+    double max_linear_vel_ = 0.07;   // m/s
+    double max_angular_vel_ = 0.8;  // rad/s
     double smoothing_alpha_ = 0.1;  // low-pass gain (0~1)
     Eigen::Vector6d computeTargetVelocity(const Eigen::Affine3d& prev, const Eigen::Affine3d& cur, double dt);
 
@@ -126,7 +126,7 @@ private:
     std::deque<Eigen::Affine3d> right_pose_window_;
     std::deque<Eigen::Affine3d> head_pose_window_;
     double stable_window_sec_ = 0.1;
-    int min_live_updates_in_window_ = 10;
+    int min_live_updates_in_window_ = 2;
     double min_live_p_diff_ = 1e-7;
     double min_live_r_diff_ = 1e-7;
     double max_stable_p_range_ = 0.05;
