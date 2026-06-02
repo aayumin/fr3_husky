@@ -51,6 +51,18 @@ Eigen::Matrix3d getBaseFromAVPPositionMap()
     R.col(1) = Eigen::Vector3d( 0.0,  0.0,  1.0);  // AVP +y -> base +z
     R.col(2) = Eigen::Vector3d(-1.0,  0.0,  0.0);  // AVP +z -> base -x
     return R;
+
+    // from Base to AVP
+    //  0   0  -1
+    // -1   0   0
+    //  0   1   0
+
+
+
+    // from AVP to Base
+    //  0  -1   0
+    //  0   0   1
+    // -1   0   0
 }
 
 Eigen::Matrix3d getEEFfromHandRotationMap()
@@ -637,8 +649,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 else
                 {
                 
-
-
                     const Eigen::Matrix3d R_base_from_avp = getBaseFromAVPPositionMap();
 
                     // ---------------------------
@@ -653,16 +663,13 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     const Eigen::Matrix3d R_world_from_head_cur = controller_poses_local[IDX_HEAD_CON].linear();
                     const Eigen::Matrix3d R_world_from_head_init = controller_poses_init_[IDX_HEAD_CON].linear();
 
-                    // Hand expressed in current / initial head frame
                     const Eigen::Vector3d hand_cur_rel_head = R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
                     const Eigen::Vector3d hand_init_rel_head = R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
 
-                    // True AVP-frame delta
-                    Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
-                    // R_world_from_head_init.transpose() * (p_hand_cur_world - p_hand_init_world);
-                                
 
-                    
+
+                    Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
+
                     // // Deadband
                     // const double POS_EPS = 0.015;
                     // for (int k = 0; k < 3; ++k)
@@ -671,24 +678,10 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     //         delta_avp(k) = 0.0;
                     // }
 
-                    // Clamp
-                    const double MAX_POS_DELTA = 0.4;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
-                        if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
-                    }
+                    // const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
+                    target_pose_diff.translation() = controller_pos_multiplier_ * delta_avp;  
 
-                    // Map AVP frame -> base frame
-                    const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
 
-                    // Get current base link pose in world frame
-                    world_from_base_cur_ = fr3_husky_model_updater_.robot_data_->getPose("base_link");
-
-                    // Convert base delta to world using base pose at tracking start
-                    const Eigen::Vector3d delta_world = world_from_base_cur_.linear() * delta_base;
-
-                    target_pose_diff.translation() = controller_pos_multiplier_ * ee_data_[left_controller_ee_name_].x_init.linear().transpose() * delta_world;
 
                     // ---------------------------
                     // ORIENTATION CALIBRATION
@@ -697,82 +690,70 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     target_pose_diff.linear().setIdentity();
                     if (move_ori_)
                     {
-                        // Hand orientations are expressed in AVP frame, NOT world frame
+
+                    // Hand orientations are expressed in AVP frame, NOT world frame
                         const Eigen::Matrix3d R_hand_init_avp = controller_poses_init_[IDX_LEFT_CON].linear();
                         const Eigen::Matrix3d R_hand_cur_avp = controller_poses_local[IDX_LEFT_CON].linear();
+                        const Eigen::Matrix3d R_head_init_avp = controller_poses_init_[IDX_HEAD_CON].linear();  //  R_H^0
+                        const Eigen::Matrix3d R_head_cur_avp = controller_poses_local[IDX_HEAD_CON].linear();   //  R_H^1
 
                         if (constraint_yaw_only_)
                         {
-                            // constraint rotation to yaw around AVP up axis (roll, pitch are ignored)
-                            const Eigen::Matrix3d R_hand_delta_avp = R_hand_cur_avp * R_hand_init_avp.transpose();
-                            const Eigen::Matrix3d R_world_from_hand_delta = world_from_base_cur_.linear() *  R_base_from_avp * R_hand_delta_avp * R_base_from_avp.transpose() * world_from_base_cur_.linear().transpose();
-                            double yaw_world = std::atan2(R_world_from_hand_delta(1, 0), R_world_from_hand_delta(0, 0));
-                            if (yaw_world >  MAX_ROT_DELTA) yaw_world =  MAX_ROT_DELTA;
-                            if (yaw_world < -MAX_ROT_DELTA) yaw_world = -MAX_ROT_DELTA;
-                            Eigen::Matrix3d R_world_from_eef_delta = Eigen::Matrix3d::Identity();
+
+                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
+                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
+
+                            double yaw_delta = std::atan2(delta_R(1, 0), delta_R(0, 0));
                             const double ROT_EPS = 0.01;
-                            if (std::abs(yaw_world) >= ROT_EPS)
+                            if (std::abs(yaw_delta) >= ROT_EPS)
                             {
-                                R_world_from_eef_delta = Eigen::AngleAxisd( controller_ori_multiplier_ * yaw_world, Eigen::Vector3d::UnitZ() ).toRotationMatrix();
+                                delta_R_scaled = Eigen::AngleAxisd( controller_ori_multiplier_ * yaw_delta, Eigen::Vector3d::UnitZ() ).toRotationMatrix();
                             }
-                            const Eigen::Matrix3d R_world_from_eef_des = R_world_from_eef_delta * ee_data_[left_controller_ee_name_].x_init.linear();
-                            target_pose_diff.linear() = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
+                            target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R   
                         }
                         else {
 
-                            // Spatial delta in AVP frame
-                            const Eigen::Matrix3d R_hand_delta_avp = R_hand_cur_avp * R_hand_init_avp.transpose();
-                            Eigen::AngleAxisd aa_hand(R_hand_delta_avp);
-                            Eigen::Matrix3d R_hand_delta_avp_scaled = Eigen::Matrix3d::Identity();
 
+                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
+                            Eigen::AngleAxisd aa_hand(delta_R);
+                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
                             double angle = aa_hand.angle();
-
-                            // const double ROT_EPS = 0.05;   // ~3 deg
                             const double ROT_EPS = 0.08;   
                             if (std::abs(angle) < ROT_EPS)
                             {
                                 angle = 0.0;
                             }
-
-                            // const double MAX_ROT_DELTA = 0.30;  // ~34 deg
-                            // if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
-                            // if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;  // angle value of AngleAxisd : 0 ~ pi
-
                             if (std::abs(angle) > 1e-10)
                             {
-                                R_hand_delta_avp_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
+                                delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
                             }
+                            // delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
                             
-                            // Convert AVP-axis delta to base_init-axis delta
-                            const Eigen::Matrix3d R_base_from_eef_delta = R_base_from_avp * R_hand_delta_avp_scaled * R_base_from_avp.transpose();
-
-                            // Convert base_init-axis delta to world-axis delta
-                            const Eigen::Matrix3d R_world_from_eef_delta = world_from_base_cur_.linear() * R_base_from_eef_delta * world_from_base_cur_.linear().transpose();
-
-                            // Apply same world/base-axis delta to initial EEF orientation
-                            const Eigen::Matrix3d R_world_from_eef_des = R_world_from_eef_delta * ee_data_[left_controller_ee_name_].x_init.linear();
-                            target_pose_diff.linear() = ee_data_[left_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
+                            target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R
                         }
                     }
-            
-                // smoothed target pose
-                Eigen::Affine3d raw_target = ee_data_[left_controller_ee_name_].x_init * target_pose_diff;
-                double dt = fr3_husky_model_updater_.dt_;
 
-                if (is_first_target_left_)
-                {   
-                    prev_target_left_ = raw_target;
-                    is_first_target_left_ = false;
-                }
-                Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
-
-                // target_vel = computeTargetVelocity(prev_target_left_, smooth_target, dt);
-                prev_target_left_ = smooth_target;
-                ee_data_[left_controller_ee_name_].x_desired = smooth_target;
-                ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
+                    target_pose_diff.linear().setIdentity();
+                    // smoothed target pose
+                    Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
+                    raw_target.linear() = target_pose_diff.linear() * ee_data_[left_controller_ee_name_].x_init.linear();
+                    raw_target.translation() = target_pose_diff.translation() + ee_data_[left_controller_ee_name_].x_init.translation();
 
 
-        
+                    double dt = fr3_husky_model_updater_.dt_;
+
+                    if (is_first_target_left_)
+                    {   
+                        prev_target_left_ = raw_target;
+                        is_first_target_left_ = false;
+                    }
+                    Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
+
+                    // target_vel = computeTargetVelocity(prev_target_left_, smooth_target, dt);
+                    prev_target_left_ = smooth_target;
+                    ee_data_[left_controller_ee_name_].x_desired = smooth_target;
+                    ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
+
 
                 }
             }
@@ -796,65 +777,43 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 }
                 else
                 {
+                    
+
                     const Eigen::Matrix3d R_base_from_avp = getBaseFromAVPPositionMap();
 
                     // ---------------------------
                     // POSITION CALIBRATION (TRUE HEAD-RELATIVE)
                     // ---------------------------
-                    const Eigen::Vector3d p_hand_cur_world =
-                        controller_poses_local[IDX_RIGHT_CON].translation();
-                    const Eigen::Vector3d p_hand_init_world =
-                        controller_poses_init_[IDX_RIGHT_CON].translation();
+                    const Eigen::Vector3d p_hand_cur_world = controller_poses_local[IDX_RIGHT_CON].translation();
+                    const Eigen::Vector3d p_hand_init_world = controller_poses_init_[IDX_RIGHT_CON].translation();
 
-                    const Eigen::Vector3d p_head_cur_world =
-                        controller_poses_local[IDX_HEAD_CON].translation();
-                    const Eigen::Vector3d p_head_init_world =
-                        controller_poses_init_[IDX_HEAD_CON].translation();
+                    const Eigen::Vector3d p_head_cur_world = controller_poses_local[IDX_HEAD_CON].translation();
+                    const Eigen::Vector3d p_head_init_world = controller_poses_init_[IDX_HEAD_CON].translation();
 
-                    const Eigen::Matrix3d R_world_from_head_cur =
-                        controller_poses_local[IDX_HEAD_CON].linear();
-                    const Eigen::Matrix3d R_world_from_head_init =
-                        controller_poses_init_[IDX_HEAD_CON].linear();
+                    const Eigen::Matrix3d R_world_from_head_cur = controller_poses_local[IDX_HEAD_CON].linear();
+                    const Eigen::Matrix3d R_world_from_head_init = controller_poses_init_[IDX_HEAD_CON].linear();
 
-                    const Eigen::Vector3d hand_cur_rel_head =
-                        R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
+                    const Eigen::Vector3d hand_cur_rel_head = R_world_from_head_cur.transpose() * (p_hand_cur_world - p_head_cur_world);
+                    const Eigen::Vector3d hand_init_rel_head = R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
 
-                    const Eigen::Vector3d hand_init_rel_head =
-                        R_world_from_head_init.transpose() * (p_hand_init_world - p_head_init_world);
+
+
+
 
                     Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
-                        // R_world_from_head_init.transpose() * (p_hand_cur_world - p_hand_init_world);
-                        
 
                     // // Deadband
-                    // const double POS_EPS = 0.05;
+                    // const double POS_EPS = 0.015;
                     // for (int k = 0; k < 3; ++k)
                     // {
                     //     if (std::abs(delta_avp(k)) < POS_EPS)
                     //         delta_avp(k) = 0.0;
                     // }
+                                                
+                    // const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
+                    target_pose_diff.translation() = controller_pos_multiplier_ * delta_avp;  
 
-                    // Clamp
-                    const double MAX_POS_DELTA = 0.4;
-                    for (int k = 0; k < 3; ++k)
-                    {
-                        if (delta_avp(k) >  MAX_POS_DELTA) delta_avp(k) =  MAX_POS_DELTA;
-                        if (delta_avp(k) < -MAX_POS_DELTA) delta_avp(k) = -MAX_POS_DELTA;
-                    }
 
-                    const Eigen::Vector3d delta_base =
-                        R_base_from_avp * delta_avp;
-                    
-                    // Get current base link pose in world frame
-                    world_from_base_cur_ = fr3_husky_model_updater_.robot_data_->getPose("base_link");
-
-                    const Eigen::Vector3d delta_world =
-                        world_from_base_cur_.linear() * delta_base;
-
-                    target_pose_diff.translation() =
-                        controller_pos_multiplier_ *
-                        ee_data_[right_controller_ee_name_].x_init.linear().transpose() *
-                        delta_world;
                         
                     // ---------------------------
                     // ORIENTATION CALIBRATION
@@ -866,85 +825,77 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         // Hand orientations are expressed in AVP frame, NOT world frame
                         const Eigen::Matrix3d R_hand_init_avp = controller_poses_init_[IDX_RIGHT_CON].linear();
                         const Eigen::Matrix3d R_hand_cur_avp = controller_poses_local[IDX_RIGHT_CON].linear();
+                        const Eigen::Matrix3d R_head_init_avp = controller_poses_init_[IDX_HEAD_CON].linear();  //  R_H^0
+                        const Eigen::Matrix3d R_head_cur_avp = controller_poses_local[IDX_HEAD_CON].linear();   //  R_H^1
 
                         if (constraint_yaw_only_)
                         {
-                            // constraint rotation to yaw around AVP up axis (roll, pitch are ignored)
-                            const Eigen::Matrix3d R_hand_delta_avp = R_hand_cur_avp * R_hand_init_avp.transpose();
-                            const Eigen::Matrix3d R_world_from_hand_delta = world_from_base_cur_.linear() *  R_base_from_avp * R_hand_delta_avp * R_base_from_avp.transpose() * world_from_base_cur_.linear().transpose();
-                            double yaw_world = std::atan2(R_world_from_hand_delta(1, 0), R_world_from_hand_delta(0, 0));
-                            if (yaw_world >  MAX_ROT_DELTA) yaw_world =  MAX_ROT_DELTA;
-                            if (yaw_world < -MAX_ROT_DELTA) yaw_world = -MAX_ROT_DELTA;
-                            Eigen::Matrix3d R_world_from_eef_delta = Eigen::Matrix3d::Identity();
+
+                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
+                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
+
+                            double yaw_delta = std::atan2(delta_R(1, 0), delta_R(0, 0));
                             const double ROT_EPS = 0.01;
-                            if (std::abs(yaw_world) >= ROT_EPS)
+                            if (std::abs(yaw_delta) >= ROT_EPS)
                             {
-                                R_world_from_eef_delta = Eigen::AngleAxisd( controller_ori_multiplier_ * yaw_world, Eigen::Vector3d::UnitZ() ).toRotationMatrix();
+                                delta_R_scaled = Eigen::AngleAxisd( controller_ori_multiplier_ * yaw_delta, Eigen::Vector3d::UnitZ() ).toRotationMatrix();
                             }
-                            const Eigen::Matrix3d R_world_from_eef_des = R_world_from_eef_delta * ee_data_[right_controller_ee_name_].x_init.linear();
-                            target_pose_diff.linear() = ee_data_[right_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
-
+                            target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R   
                         }
-
-
-
                         else {
 
-                            // Spatial delta in AVP frame
-                            const Eigen::Matrix3d R_hand_delta_avp = R_hand_cur_avp * R_hand_init_avp.transpose();
-                            Eigen::AngleAxisd aa_hand(R_hand_delta_avp);
-                            Eigen::Matrix3d R_hand_delta_avp_scaled = Eigen::Matrix3d::Identity();
-                            double angle = aa_hand.angle();
 
-                            // const double ROT_EPS = 0.05;   // ~3 deg
-                            const double ROT_EPS = 0.08;  
+                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
+
+
+
+                            // // remove // for debugging
+                            // double temp_angle = std::sin(M_PI * dbg_cnt / 5000.0) * M_PI / 6.0; 
+                            // delta_R = dyros_math::rotateWithZ(temp_angle);
+                            // // delta_R = dyros_math::rotateWithX(temp_angle);
+
+
+                            Eigen::AngleAxisd aa_hand(delta_R);
+                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
+                            double angle = aa_hand.angle();
+                            const double ROT_EPS = 0.08;   
                             if (std::abs(angle) < ROT_EPS)
                             {
                                 angle = 0.0;
                             }
-
-                            // const double MAX_ROT_DELTA = 0.30;  // ~34 deg
-                            // if (angle >  MAX_ROT_DELTA) angle =  MAX_ROT_DELTA;
-                            // if (angle < -MAX_ROT_DELTA) angle = -MAX_ROT_DELTA;
-
                             if (std::abs(angle) > 1e-10)
                             {
-                                R_hand_delta_avp_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
+                                delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
                             }
-
-
-                            // Convert AVP-axis delta to base_init-axis delta
-                            const Eigen::Matrix3d R_base_from_eef_delta = R_base_from_avp * R_hand_delta_avp_scaled * R_base_from_avp.transpose();
-
-                            // Convert base_init-axis delta to world-axis delta
-                            const Eigen::Matrix3d R_world_from_eef_delta = world_from_base_cur_.linear() * R_base_from_eef_delta * world_from_base_cur_.linear().transpose();
                             
-                            // Apply same world/base-axis delta to initial EEF orientation
-                            const Eigen::Matrix3d R_world_from_eef_des = R_world_from_eef_delta * ee_data_[right_controller_ee_name_].x_init.linear();
-
-                            // raw_target = x_init * target_pose_diff
-                            target_pose_diff.linear() = ee_data_[right_controller_ee_name_].x_init.linear().transpose() * R_world_from_eef_des;
+                            // delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
+                            
+                            target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R
                         }
                     }
-                }                
+                    target_pose_diff.linear().setIdentity();
 
-                // smoothed target pose
-                Eigen::Affine3d raw_target = ee_data_[right_controller_ee_name_].x_init * target_pose_diff;
-                double dt = fr3_husky_model_updater_.dt_;
-                if (is_first_target_right_)
-                {
-                    prev_target_right_ = raw_target;
-                    is_first_target_right_ = false;
+                    // smoothed target pose
+                    Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
+                    raw_target.linear() = target_pose_diff.linear() * ee_data_[right_controller_ee_name_].x_init.linear();
+                    raw_target.translation() = target_pose_diff.translation() + ee_data_[right_controller_ee_name_].x_init.translation();
+
+
+                    double dt = fr3_husky_model_updater_.dt_;
+                    if (is_first_target_right_)
+                    {
+                        prev_target_right_ = raw_target;
+                        is_first_target_right_ = false;
+                    }
+                    Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
+                    // target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
+                    prev_target_right_ = smooth_target;
+
+                    ee_data_[right_controller_ee_name_].x_desired = smooth_target;
+                    ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+
                 }
-                Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
-                // target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
-                prev_target_right_ = smooth_target;
-
-                ee_data_[right_controller_ee_name_].x_desired = smooth_target;
-                ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
-
             }
-
         }
     }
 
