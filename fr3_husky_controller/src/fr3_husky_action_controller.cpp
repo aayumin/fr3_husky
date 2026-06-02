@@ -7,62 +7,6 @@
 
 
 
-namespace mujoco_ros_hardware
-{
-class MujocoWorldSingleton
-{
-public:
-    static MujocoWorldSingleton& get();
-    const std::string & xacroPath() const;
-    bool isSceneLoaded() const;
-    mjModel* model() const;
-    mjData* data() const;
-    std::mutex& dataMutex();
-};
-}  // namespace mujoco_ros_hardware
-
-
-
-void randomizeFreeBodyPose(
-    mjModel* model,
-    mjData* data,
-    const std::string& joint_name,
-    double x_min, double x_max,
-    double y_min, double y_max,
-    double z,
-    double yaw_min, double yaw_max)
-{
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-
-    std::uniform_real_distribution<double> x_dist(x_min, x_max);
-    std::uniform_real_distribution<double> y_dist(y_min, y_max);
-    std::uniform_real_distribution<double> yaw_dist(yaw_min, yaw_max);
-
-    const int jid = mj_name2id(model, mjOBJ_JOINT, joint_name.c_str());
-    if (jid < 0) return;
-
-    const int qadr = model->jnt_qposadr[jid];
-    const int vadr = model->jnt_dofadr[jid];
-
-    const double x = x_dist(gen);
-    const double y = y_dist(gen);
-    const double yaw = yaw_dist(gen);
-
-    data->qpos[qadr + 0] = x;
-    data->qpos[qadr + 1] = y;
-    data->qpos[qadr + 2] = z;
-
-    data->qpos[qadr + 3] = std::cos(yaw * 0.5);
-    data->qpos[qadr + 4] = 0.0;
-    data->qpos[qadr + 5] = 0.0;
-    data->qpos[qadr + 6] = std::sin(yaw * 0.5);
-
-    for (int i = 0; i < 6; ++i)
-        data->qvel[vadr + i] = 0.0;
-}
-
-
 
 namespace fr3_husky_controller
 {
@@ -869,66 +813,6 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     }
 
 
-    // 5. sucess check
-    {
-        auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
-        bool isSuccess = false;
-        const double now = get_node()->now().seconds();
-        const double elapsed = teleop_task_start_time_ > 0.0 ? now - teleop_task_start_time_ : -1.0;
-
-        // is_success
-        {
-            std::lock_guard<std::mutex> lock(world.dataMutex());
-            mjModel* mj_model = world.model();
-            mjData* mj_data = world.data();
-
-            if (mj_model && mj_data)
-            {
-                isSuccess = isSiteNearSite(mj_model, mj_data, "obj_success_site", "goal_success_site", 0.035);
-            }
-        }
-
-        if (isSuccess && !task_shutdown_requested_)
-        {
-            task_shutdown_requested_ = true;
-
-
-            if (elapsed >= 0.0)
-                RCLCPP_INFO(get_node()->get_logger(), "[TaskSuccess] elapsed_time=%.3f sec", elapsed);
-            else
-                RCLCPP_INFO(get_node()->get_logger(), "[TaskSuccess] elapsed_time=unknown");
-        }
-
-        // timeout
-        if (elapsed >= 0.0 && elapsed >= task_timeout_)
-        {
-            task_shutdown_requested_ = true;
-            RCLCPP_INFO(get_node()->get_logger(), "[TaskTimeout] elapsed_time=%.3f sec exceeds timeout of %.3f sec", elapsed, task_timeout_);
-        }
-
-
-
-        // shutdown if success or timeout
-        if (task_shutdown_requested_){
-
-            if (active_task_)
-            {
-                active_task_->onDeactivated();
-                active_task_.reset();
-            }
-
-            model_updater_->haltCommands();
-            
-
-            std::thread([node = get_node()]()
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(2500));
-                rclcpp::shutdown();
-            }).detach();
-        }
-
-    }
-
 
 
     const bool estop_pressed =
@@ -952,41 +836,6 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
     }
 
 
-
-    // Randomize initial pose of the free body (object) in the scene
-    if (!object_randomized_)
-    {
-        auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
-        const std::string scene_name = std::filesystem::path(mujoco_ros_hardware::MujocoWorldSingleton::get().xacroPath()).filename().string();
-        std::lock_guard<std::mutex> lock(world.dataMutex());
-        mjModel* mj_model = world.model();
-        mjData* mj_data = world.data();
-        if (scene_name.find("square") != std::string::npos)
-        {   
-            // randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, M_PI); // 0.78 -0.28 0.65
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.65, -M_PI, -M_PI/2.0); // 0.78 -0.28 0.65
-        }
-        else if (scene_name.find("coffee") != std::string::npos)
-        {   
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.45, -0.25, 0.65, -M_PI, M_PI); // 0.78 -0.35 0.65
-        }
-        else if (scene_name.find("yaw") != std::string::npos)
-        {   
-            // randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.5, -0.3, 0.65, -M_PI, M_PI); // 0.78 -0.4 0.65
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.5, -0.3, 0.65, -M_PI/4.0, M_PI/4.0); // 0.78 -0.4 0.65
-        }
-        else if (scene_name.find("threading") != std::string::npos)
-        {
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.42, -0.22, 0.75, -M_PI, M_PI);  // 0.78 -0.32 0.75
-        }
-        else if (scene_name.find("threepieceassembly") != std::string::npos)
-        {
-            randomizeFreeBodyPose(mj_model, mj_data, "obj_joint", 0.68, 0.88, -0.38, -0.18, 0.75, -M_PI, M_PI);   // 0.78 -0.28 0.75
-        }
-
-        mj_forward(mj_model, mj_data);
-        object_randomized_ = true;    
-    }
 
 
     return controller_interface::return_type::OK;
@@ -1370,8 +1219,8 @@ bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulat
     robot_controller->setManipulatorJointGain(mani_joint_kp, mani_joint_kv);
     robot_controller->setIKGain(task_ik_kp);
     robot_controller->setIDGain(task_id_kp, task_id_kv);
-    robot_controller->setQPIKGain(qpik_tracking, qpik_mani_damping, qpik_mani_acc_damping, qpik_mobi_damping, qpik_mobi_acc_damping);
-    robot_controller->setQPIDGain(qpid_tracking, qpid_mani_vel_damping, qpid_mani_acc_damping, qpid_mobi_vel_damping, qpid_mobi_acc_damping);
+    robot_controller->setQPIKGain(qpik_tracking, qpik_mani_damping, qpik_mani_acc_damping);
+    robot_controller->setQPIDGain(qpid_tracking, qpid_mani_vel_damping, qpid_mani_acc_damping);
     return true;
 }
 }  // namespace fr3_husky_controller
