@@ -373,6 +373,10 @@ void AppleVisionPro::onStart()
 
     prev_target_left_ = Eigen::Affine3d::Identity();
     prev_target_right_ = Eigen::Affine3d::Identity();
+    q_delta_R_filtered_left_ = Eigen::Quaterniond::Identity();
+    q_delta_R_filtered_right_ = Eigen::Quaterniond::Identity();
+    yaw_delta_filtered_left_ = 0.0;
+    yaw_delta_filtered_right_ = 0.0;
 
     ee_data_.clear();
     waiting_for_jtc_.store(false, std::memory_order_relaxed);
@@ -670,16 +674,16 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                     Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
 
-                    // // Deadband
-                    // const double POS_EPS = 0.015;
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (std::abs(delta_avp(k)) < POS_EPS)
-                    //         delta_avp(k) = 0.0;
-                    // }
+                    // Deadband
+                    const double POS_EPS = 0.015;
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        if (std::abs(delta_avp(k)) < POS_EPS)
+                            delta_avp(k) = 0.0;
+                    }
 
-                    // const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
-                    target_pose_diff.translation() = controller_pos_multiplier_ * delta_avp;  
+                    const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
+                    target_pose_diff.translation() = controller_pos_multiplier_ * delta_base;  
 
 
 
@@ -699,41 +703,43 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                         if (constraint_yaw_only_)
                         {
+                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;
+                            Eigen::Matrix3d delta_R_inv = delta_R.transpose(); // 행렬을 미리 뒤집음
+                            double yaw_delta_raw = std::atan2(delta_R_inv(1, 0), delta_R_inv(0, 0));
+                            double yaw_delta_scaled = controller_ori_multiplier_ * yaw_delta_raw;
+                            while (yaw_delta_scaled - yaw_delta_filtered_left_ > M_PI)  yaw_delta_scaled -= 2.0 * M_PI;
+                            while (yaw_delta_scaled - yaw_delta_filtered_left_ < -M_PI) yaw_delta_scaled += 2.0 * M_PI;
 
-                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
-                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
+                            const double alpha_yaw = 0.15;
+                            yaw_delta_filtered_left_ = (1.0 - alpha_yaw) * yaw_delta_filtered_left_ + alpha_yaw * yaw_delta_scaled;
+                            Eigen::Matrix3d delta_R_scaled = Eigen::AngleAxisd(yaw_delta_filtered_left_, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+                            // target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  
+                            target_pose_diff.linear() =delta_R_scaled ;  
 
-                            double yaw_delta = std::atan2(delta_R(1, 0), delta_R(0, 0));
-                            const double ROT_EPS = 0.01;
-                            if (std::abs(yaw_delta) >= ROT_EPS)
-                            {
-                                delta_R_scaled = Eigen::AngleAxisd( controller_ori_multiplier_ * yaw_delta, Eigen::Vector3d::UnitZ() ).toRotationMatrix();
-                            }
-                            target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R   
                         }
                         else {
 
 
                             Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
-                            Eigen::AngleAxisd aa_hand(delta_R);
-                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
-                            double angle = aa_hand.angle();
-                            const double ROT_EPS = 0.08;   
-                            if (std::abs(angle) < ROT_EPS)
-                            {
-                                angle = 0.0;
-                            }
-                            if (std::abs(angle) > 1e-10)
-                            {
-                                delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
-                            }
-                            // delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
+                           
+
+                            Eigen::Quaterniond q_raw(delta_R);
+                            q_raw.normalize();
+                            Eigen::Quaterniond q_scaled = Eigen::Quaterniond::Identity().slerp(controller_ori_multiplier_, q_raw);
+
+                            if (q_delta_R_filtered_left_.dot(q_scaled) < 0.0) q_scaled.coeffs() = -q_scaled.coeffs();
+                            q_delta_R_filtered_left_ = q_delta_R_filtered_left_.slerp(0.15, q_scaled);
+                            q_delta_R_filtered_left_.normalize();
+                            Eigen::Matrix3d delta_R_scaled = q_delta_R_filtered_left_.toRotationMatrix();
+
+
+
                             
                             target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R
                         }
                     }
 
-                    target_pose_diff.linear().setIdentity();
+                    // target_pose_diff.linear().setIdentity();
                     // smoothed target pose
                     Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
                     raw_target.linear() = target_pose_diff.linear() * ee_data_[left_controller_ee_name_].x_init.linear();
@@ -802,16 +808,16 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                     Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
 
-                    // // Deadband
-                    // const double POS_EPS = 0.015;
-                    // for (int k = 0; k < 3; ++k)
-                    // {
-                    //     if (std::abs(delta_avp(k)) < POS_EPS)
-                    //         delta_avp(k) = 0.0;
-                    // }
+                    // Deadband
+                    const double POS_EPS = 0.015;
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        if (std::abs(delta_avp(k)) < POS_EPS)
+                            delta_avp(k) = 0.0;
+                    }
                                                 
-                    // const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
-                    target_pose_diff.translation() = controller_pos_multiplier_ * delta_avp;  
+                    const Eigen::Vector3d delta_base = R_base_from_avp * delta_avp;
+                    target_pose_diff.translation() = controller_pos_multiplier_ * delta_base;  
 
 
                         
@@ -831,49 +837,45 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         if (constraint_yaw_only_)
                         {
 
-                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
-                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
 
-                            double yaw_delta = std::atan2(delta_R(1, 0), delta_R(0, 0));
-                            const double ROT_EPS = 0.01;
-                            if (std::abs(yaw_delta) >= ROT_EPS)
-                            {
-                                delta_R_scaled = Eigen::AngleAxisd( controller_ori_multiplier_ * yaw_delta, Eigen::Vector3d::UnitZ() ).toRotationMatrix();
-                            }
-                            target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R   
+                            Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;
+
+                            Eigen::Matrix3d delta_R_inv = delta_R.transpose(); // 행렬을 미리 뒤집음
+                            double yaw_delta_raw = std::atan2(delta_R_inv(1, 0), delta_R_inv(0, 0));
+                            double yaw_delta_scaled = controller_ori_multiplier_ * yaw_delta_raw;
+                            
+                            while (yaw_delta_scaled - yaw_delta_filtered_right_ > M_PI)  yaw_delta_scaled -= 2.0 * M_PI;
+                            while (yaw_delta_scaled - yaw_delta_filtered_right_ < -M_PI) yaw_delta_scaled += 2.0 * M_PI;
+
+                            const double alpha_yaw = 0.15;
+                            yaw_delta_filtered_right_ = (1.0 - alpha_yaw) * yaw_delta_filtered_right_ + alpha_yaw * yaw_delta_scaled;
+                            Eigen::Matrix3d delta_R_scaled = Eigen::AngleAxisd(yaw_delta_filtered_right_, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+                            // target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  
+                            target_pose_diff.linear() =delta_R_scaled ;  
+
                         }
                         else {
 
 
                             Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
 
+                            Eigen::Quaterniond q_raw(delta_R);
+                            q_raw.normalize();
+                            Eigen::Quaterniond q_scaled = Eigen::Quaterniond::Identity().slerp(controller_ori_multiplier_, q_raw);
+
+                            if (q_delta_R_filtered_right_.dot(q_scaled) < 0.0) q_scaled.coeffs() = -q_scaled.coeffs();
+                            q_delta_R_filtered_right_ = q_delta_R_filtered_right_.slerp(0.15, q_scaled);
+                            q_delta_R_filtered_right_.normalize();
+                            Eigen::Matrix3d delta_R_scaled = q_delta_R_filtered_right_.toRotationMatrix();
 
 
-                            // // remove // for debugging
-                            // double temp_angle = std::sin(M_PI * dbg_cnt / 5000.0) * M_PI / 6.0; 
-                            // delta_R = dyros_math::rotateWithZ(temp_angle);
-                            // // delta_R = dyros_math::rotateWithX(temp_angle);
 
-
-                            Eigen::AngleAxisd aa_hand(delta_R);
-                            Eigen::Matrix3d delta_R_scaled = Eigen::Matrix3d::Identity();
-                            double angle = aa_hand.angle();
-                            const double ROT_EPS = 0.08;   
-                            if (std::abs(angle) < ROT_EPS)
-                            {
-                                angle = 0.0;
-                            }
-                            if (std::abs(angle) > 1e-10)
-                            {
-                                delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
-                            }
-                            
                             // delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
                             
                             target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R
                         }
                     }
-                    target_pose_diff.linear().setIdentity();
+                    // target_pose_diff.linear().setIdentity();
 
                     // smoothed target pose
                     Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
@@ -1098,6 +1100,11 @@ void AppleVisionPro::resetRealtimeTracking()
 
     is_first_target_left_ = true;
     is_first_target_right_ = true;
+
+
+    fr3_husky_model_updater_.qdot_desired_total_.setZero();
+    fr3_husky_model_updater_.torque_desired_total_.setZero();
+    fr3_husky_model_updater_.wheel_vel_desired_.setZero();
 }
 
 Eigen::Vector6d AppleVisionPro::computeTargetVelocity(

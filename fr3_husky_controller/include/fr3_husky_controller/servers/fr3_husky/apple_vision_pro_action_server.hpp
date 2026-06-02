@@ -169,6 +169,10 @@ private:
     Eigen::VectorXd q_init_for_home_; // joint config snapshot at manipulator mode start (for cubic null space)
 
 
+    Eigen::Quaterniond q_delta_R_filtered_left_ = Eigen::Quaterniond::Identity();
+    Eigen::Quaterniond q_delta_R_filtered_right_ = Eigen::Quaterniond::Identity();
+    double yaw_delta_filtered_left_ = 0.0;
+    double yaw_delta_filtered_right_ = 0.0;
 
     // home pose mode: -> send goal to fr3_move_to_joint
     const Eigen::Vector<double, FR3_DOF> HomePose{0., -0.785, 0.0, -2.356, 0.0, 1.571, 0.785};
