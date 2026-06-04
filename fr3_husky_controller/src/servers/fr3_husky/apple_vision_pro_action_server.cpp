@@ -437,16 +437,43 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 if (!left_controller_ee_name_.empty())
                 {
                     controller_poses_init_[IDX_LEFT_CON] = controller_poses_local[IDX_LEFT_CON];
-                    ee_data_[left_controller_ee_name_].setInit();
                     is_first_target_left_ = true;
+
+
+                    prev_target_left_ = fr3_husky_model_updater_.robot_data_->getPose(left_controller_ee_name_);
+                    ee_data_[left_controller_ee_name_].x = fr3_husky_model_updater_.robot_data_->getPose(left_controller_ee_name_);
+                    ee_data_[left_controller_ee_name_].xdot = fr3_husky_model_updater_.robot_data_->getVelocity(left_controller_ee_name_);
+                    ee_data_[left_controller_ee_name_].xddot.setZero();
+                    ee_data_[left_controller_ee_name_].setInit();
+                    ee_data_[left_controller_ee_name_].setDesired();
+
+
+
+                    // prev_target_left_ = Eigen::Affine3d::Identity();
+                    q_delta_R_filtered_left_ = Eigen::Quaterniond::Identity();
+                    yaw_delta_filtered_left_ = 0.0;
+
                 }
 
                 is_realtime_tracking_started_[IDX_RIGHT_CON] = right_tracking_mode_on_;
                 if (!right_controller_ee_name_.empty())
                 {
                     controller_poses_init_[IDX_RIGHT_CON] = controller_poses_local[IDX_RIGHT_CON];
-                    ee_data_[right_controller_ee_name_].setInit();
                     is_first_target_right_ = true;
+
+
+                    prev_target_right_ = fr3_husky_model_updater_.robot_data_->getPose(right_controller_ee_name_);
+                    ee_data_[right_controller_ee_name_].x = fr3_husky_model_updater_.robot_data_->getPose(right_controller_ee_name_);
+                    ee_data_[right_controller_ee_name_].xdot = fr3_husky_model_updater_.robot_data_->getVelocity(right_controller_ee_name_);
+                    ee_data_[right_controller_ee_name_].xddot.setZero();
+                    ee_data_[right_controller_ee_name_].setInit();
+                    ee_data_[right_controller_ee_name_].setDesired();
+
+                    // prev_target_right_ = Eigen::Affine3d::Identity();
+                    q_delta_R_filtered_right_ = Eigen::Quaterniond::Identity();
+                    yaw_delta_filtered_right_ = 0.0;
+
+
                 }
 
                 RCLCPP_INFO(node_->get_logger(), "[%s] Auto tracking ON. left=%s right=%s", name_.c_str(), left_tracking_mode_on_ ? "true" : "false", right_tracking_mode_on_ ? "true" : "false");
