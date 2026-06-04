@@ -30,7 +30,6 @@ private:
     ResultPtr     makeResult(StopReason reason) override;
 
     bool runCommandForArm(const std::string& arm);
-    bool setWeldActive(bool active);
 
     FR3HuskyModelUpdater& fr3_husky_model_updater_;
 

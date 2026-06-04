@@ -6,18 +6,6 @@
 #include <stdexcept>
 #include <vector>
 
-namespace mujoco_ros_hardware
-{
-class MujocoWorldSingleton
-{
-public:
-    static MujocoWorldSingleton& get();
-    bool isSceneLoaded() const;
-    mjModel* model() const;
-    mjData* data() const;
-    std::mutex& dataMutex();
-};
-}  // namespace mujoco_ros_hardware
 
 namespace fr3_husky_controller::servers::fr3_husky
 {
@@ -65,147 +53,7 @@ Eigen::Matrix3d getBaseFromAVPPositionMap()
     // -1   0   0
 }
 
-Eigen::Matrix3d getEEFfromHandRotationMap()
-{
-    Eigen::Matrix3d R;
-    // Map hand local vectors into eef local vectors:
-    // hand -x -> eef +z
-    // hand +y -> eef +y
-    // hand +z -> eef +x
-    R <<
-         0.0, 0.0, 1.0,
-         0.0, 1.0, 0.0,
-        -1.0, 0.0, 0.0;
-    return R;
-}
 
-Eigen::Quaterniond averageQuaternionWXYZ(const Eigen::Vector4d& qsum)
-{
-    Eigen::Vector4d q = qsum;
-    if (q.norm() < 1e-12)
-    {
-        return Eigen::Quaterniond::Identity();
-    }
-    q.normalize();
-    return Eigen::Quaterniond(q(0), q(1), q(2), q(3)); // w, x, y, z
-}
-
-// ==================== MUJOCO OBJECT WELD ATTACH / DETACH ====================
-// Predefined in fr3_husky_description/mjcf/dual_fr3_husky.xml.xacro:
-//   weld_right_tcp: right_fr3_hand_tcp <-> blue_cylinder_body
-//   weld_left_tcp:  left_fr3_hand_tcp  <-> blue_cylinder_body
-// This directly toggles MuJoCo's equality constraint in the shared simulation.
-// ============================================================================
-bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger,
-                                       bool active,
-                                       const std::vector<bool>& is_gripper_mode_on,
-                                       int controller_idx)
-{
-    auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
-    if (!world.isSceneLoaded())
-    {
-        RCLCPP_WARN(logger, "[AVP object weld] MuJoCo scene is not loaded; cannot %s weld.",
-                    active ? "attach" : "detach");
-        return false;
-    }
-
-    std::lock_guard<std::mutex> lock(world.dataMutex());
-    mjModel* model = world.model();
-    mjData* data = world.data();
-    if (!model || !data)
-    {
-        RCLCPP_WARN(logger, "[AVP object weld] MuJoCo model/data unavailable.");
-        return false;
-    }
-
-    const bool is_right_controller = controller_idx == IDX_RIGHT_CON;
-    const bool is_left_controller = controller_idx == IDX_LEFT_CON;
-    if (!is_right_controller && !is_left_controller)
-    {
-        RCLCPP_WARN(logger, "[AVP object weld] Invalid controller index: %d", controller_idx);
-        return false;
-    }
-
-    if (active && (controller_idx >= static_cast<int>(is_gripper_mode_on.size()) ||
-                   !is_gripper_mode_on[controller_idx]))
-    {
-        RCLCPP_WARN(logger,
-                    "[AVP object weld] Cannot attach; gripper mode is off for controller index %d.",
-                    controller_idx);
-        return false;
-    }
-
-    const char* const kWeldName = is_right_controller ? "weld_right_tcp" : "weld_left_tcp";
-    const char* const kParentBodyName = is_right_controller ? "right_fr3_hand_tcp" : "left_fr3_hand_tcp";
-    constexpr const char* kChildBodyName = "obj";
-    constexpr const char* kChildFreeJointName = "obj_joint";
-
-    const int weld_id = mj_name2id(model, mjOBJ_EQUALITY, kWeldName);
-    const int parent_body_id = mj_name2id(model, mjOBJ_BODY, kParentBodyName);
-    const int child_body_id = mj_name2id(model, mjOBJ_BODY, kChildBodyName);
-
-    if (weld_id < 0 || parent_body_id < 0 || child_body_id < 0)
-    {
-        RCLCPP_WARN(logger,
-                    "[AVP object weld] Missing weld/body. weld=%d parent(%s)=%d child(%s)=%d",
-                    weld_id, kParentBodyName, parent_body_id, kChildBodyName, child_body_id);
-        return false;
-    }
-
-    if (active)
-    {
-        // Update weld relative pose at the instant of attachment. This avoids a
-        // large snap impulse from using the XML compile-time relative pose.
-        mjtNum rel_pos_world[3];
-        mjtNum rel_pos_parent[3];
-        mju_sub3(rel_pos_world, data->xpos + 3 * child_body_id, data->xpos + 3 * parent_body_id);
-        mju_mulMatTVec(rel_pos_parent, data->xmat + 9 * parent_body_id, rel_pos_world, 3, 3);
-
-        mjtNum parent_quat_inv[4];
-        mjtNum rel_quat[4];
-        mju_negQuat(parent_quat_inv, data->xquat + 4 * parent_body_id);
-        mju_mulQuat(rel_quat, parent_quat_inv, data->xquat + 4 * child_body_id);
-        const mjtNum rel_quat_norm = std::sqrt(rel_quat[0] * rel_quat[0] +
-                                               rel_quat[1] * rel_quat[1] +
-                                               rel_quat[2] * rel_quat[2] +
-                                               rel_quat[3] * rel_quat[3]);
-        if (rel_quat_norm > mjtNum(1e-12))
-        {
-            for (int i = 0; i < 4; ++i)
-            {
-                rel_quat[i] /= rel_quat_norm;
-            }
-        }
-
-        mjtNum* eq_data = model->eq_data + weld_id * mjNEQDATA;
-        // MuJoCo weld eq_data layout is [anchor(3), relpos(3), relquat(4), ...].
-        // Match TMM's attachment logic: update only the current relative pose,
-        // then enable the predefined weld. Do not move either body at attach time.
-        eq_data[3] = rel_pos_parent[0];
-        eq_data[4] = rel_pos_parent[1];
-        eq_data[5] = rel_pos_parent[2];
-        eq_data[6] = rel_quat[0];
-        eq_data[7] = rel_quat[1];
-        eq_data[8] = rel_quat[2];
-        eq_data[9] = rel_quat[3];
-
-        const int free_joint_id = mj_name2id(model, mjOBJ_JOINT, kChildFreeJointName);
-        if (free_joint_id >= 0)
-        {
-            const int dof_adr = model->jnt_dofadr[free_joint_id];
-            for (int i = 0; i < 6; ++i)
-            {
-                data->qvel[dof_adr + i] = 0.0;
-            }
-        }
-    }
-
-    data->eq_active[weld_id] = active ? 1 : 0;
-    mj_forward(model, data);
-    RCLCPP_INFO(logger, "[AVP object weld] %s %s: %s <-> %s",
-                active ? "Attached" : "Detached", kWeldName, kParentBodyName, kChildBodyName);
-    return true;
-}
 
 }  // namespace
 
@@ -496,16 +344,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         RCLCPP_INFO(node_->get_logger(), "[%s] lhand trigger released → GripperGrasp('%s')", name_.c_str(), robot_name.c_str());
                         fr3_husky_model_updater_.GripperGrasp(robot_name, 0.0, 0.1, 100.0);
 
-                        // Attach blue_cylinder_body to left_fr3_hand_tcp while the left gripper is closed.
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_RIGHT_CON);
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), true, is_gripper_mode_on_, IDX_LEFT_CON);
                     }
                     else
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] lhand trigger released → GripperOpen('%s')", name_.c_str(), robot_name.c_str());
 
-                        // Detach blue_cylinder_body from left_fr3_hand_tcp before opening the left gripper.
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_LEFT_CON);
 
                         fr3_husky_model_updater_.GripperOpen(robot_name, 0.1);
                     }
@@ -527,16 +370,11 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         RCLCPP_INFO(node_->get_logger(), "[%s] rhand trigger released → GripperGrasp('%s')", name_.c_str(), robot_name.c_str());
                         fr3_husky_model_updater_.GripperGrasp(robot_name, 0.0, 0.1, 100.0);
 
-                        // Attach blue_cylinder_body to right_fr3_hand_tcp while the right gripper is closed.
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_LEFT_CON);
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), true, is_gripper_mode_on_, IDX_RIGHT_CON);
                     }
                     else
                     {
                         RCLCPP_INFO(node_->get_logger(), "[%s] rhand trigger released → GripperOpen('%s')", name_.c_str(), robot_name.c_str());
 
-                        // Detach blue_cylinder_body from right_fr3_hand_tcp before opening the right gripper.
-                        setBlueCylinderRightTcpWeldActive(node_->get_logger(), false, is_gripper_mode_on_, IDX_RIGHT_CON);
 
                         fr3_husky_model_updater_.GripperOpen(robot_name, 0.1);
                     }

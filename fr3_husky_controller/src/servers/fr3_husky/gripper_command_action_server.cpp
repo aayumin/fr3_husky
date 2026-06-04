@@ -7,18 +7,6 @@
 #include <stdexcept>
 #include <vector>
 
-namespace mujoco_ros_hardware
-{
-class MujocoWorldSingleton
-{
-public:
-    static MujocoWorldSingleton& get();
-    bool isSceneLoaded() const;
-    mjModel* model() const;
-    mjData* data() const;
-    std::mutex& dataMutex();
-};
-}  // namespace mujoco_ros_hardware
 
 namespace fr3_husky_controller::servers::fr3_husky
 {
@@ -35,91 +23,6 @@ FR3HuskyModelUpdater& getFR3HuskyModelUpdater(ModelUpdaterBase& model_updater, c
     return *fr3_husky_model_updater;
 }
 
-bool setBlueCylinderRightTcpWeldActive(const rclcpp::Logger& logger, bool active)
-{
-    auto& world = mujoco_ros_hardware::MujocoWorldSingleton::get();
-    if (!world.isSceneLoaded())
-    {
-        RCLCPP_WARN(logger, "[GripperCommand weld] MuJoCo scene is not loaded; cannot %s weld.",
-                    active ? "attach" : "detach");
-        return false;
-    }
-
-    std::lock_guard<std::mutex> lock(world.dataMutex());
-    mjModel* model = world.model();
-    mjData* data = world.data();
-    if (!model || !data)
-    {
-        RCLCPP_WARN(logger, "[GripperCommand weld] MuJoCo model/data unavailable.");
-        return false;
-    }
-
-    constexpr const char* kWeldName = "weld_right_tcp";
-    constexpr const char* kParentBodyName = "right_fr3_hand_tcp";
-    constexpr const char* kChildBodyName = "obj";
-    constexpr const char* kChildFreeJointName = "obj_joint";
-
-    const int weld_id = mj_name2id(model, mjOBJ_EQUALITY, kWeldName);
-    const int parent_body_id = mj_name2id(model, mjOBJ_BODY, kParentBodyName);
-    const int child_body_id = mj_name2id(model, mjOBJ_BODY, kChildBodyName);
-
-    if (weld_id < 0 || parent_body_id < 0 || child_body_id < 0)
-    {
-        RCLCPP_WARN(logger,
-                    "[GripperCommand weld] Missing weld/body. weld=%d parent(%s)=%d child(%s)=%d",
-                    weld_id, kParentBodyName, parent_body_id, kChildBodyName, child_body_id);
-        return false;
-    }
-
-    if (active)
-    {
-        mjtNum rel_pos_world[3];
-        mjtNum rel_pos_parent[3];
-        mju_sub3(rel_pos_world, data->xpos + 3 * child_body_id, data->xpos + 3 * parent_body_id);
-        mju_mulMatTVec(rel_pos_parent, data->xmat + 9 * parent_body_id, rel_pos_world, 3, 3);
-
-        mjtNum parent_quat_inv[4];
-        mjtNum rel_quat[4];
-        mju_negQuat(parent_quat_inv, data->xquat + 4 * parent_body_id);
-        mju_mulQuat(rel_quat, parent_quat_inv, data->xquat + 4 * child_body_id);
-        const mjtNum rel_quat_norm = std::sqrt(rel_quat[0] * rel_quat[0] +
-                                               rel_quat[1] * rel_quat[1] +
-                                               rel_quat[2] * rel_quat[2] +
-                                               rel_quat[3] * rel_quat[3]);
-        if (rel_quat_norm > mjtNum(1e-12))
-        {
-            for (int i = 0; i < 4; ++i)
-            {
-                rel_quat[i] /= rel_quat_norm;
-            }
-        }
-
-        mjtNum* eq_data = model->eq_data + weld_id * mjNEQDATA;
-        eq_data[3] = rel_pos_parent[0];
-        eq_data[4] = rel_pos_parent[1];
-        eq_data[5] = rel_pos_parent[2];
-        eq_data[6] = rel_quat[0];
-        eq_data[7] = rel_quat[1];
-        eq_data[8] = rel_quat[2];
-        eq_data[9] = rel_quat[3];
-
-        const int free_joint_id = mj_name2id(model, mjOBJ_JOINT, kChildFreeJointName);
-        if (free_joint_id >= 0)
-        {
-            const int dof_adr = model->jnt_dofadr[free_joint_id];
-            for (int i = 0; i < 6; ++i)
-            {
-                data->qvel[dof_adr + i] = 0.0;
-            }
-        }
-    }
-
-    data->eq_active[weld_id] = active ? 1 : 0;
-    mj_forward(model, data);
-    RCLCPP_INFO(logger, "[GripperCommand weld] %s %s: %s <-> %s",
-                active ? "Attached" : "Detached", kWeldName, kParentBodyName, kChildBodyName);
-    return true;
-}
 }  // namespace
 
 GripperCommand::GripperCommand(
@@ -230,10 +133,6 @@ bool GripperCommand::runCommandForArm(const std::string& arm)
 
     if (goal_.command == "open")
     {
-        if (goal_.use_weld && arm == "right")
-        {
-            setWeldActive(false);
-        }
         ok = fr3_husky_model_updater_.GripperOpen(arm, goal_.speed);
     }
     else if (goal_.command == "grasp")
@@ -245,10 +144,6 @@ bool GripperCommand::runCommandForArm(const std::string& arm)
             goal_.force,
             {goal_.epsilon_inner, goal_.epsilon_outer});
 
-        if (ok && goal_.use_weld && arm == "right")
-        {
-            setWeldActive(true);
-        }
     }
     else
     {
@@ -263,19 +158,6 @@ bool GripperCommand::runCommandForArm(const std::string& arm)
     return true;
 }
 
-bool GripperCommand::setWeldActive(bool active)
-{
-
-    if (!goal_.use_weld)
-    {
-        return true;
-    }
-    if (!goal_.weld_name.empty() && goal_.weld_name != "weld_right_tcp")
-    {
-        return false;
-    }
-    return setBlueCylinderRightTcpWeldActive(node_->get_logger(), active);
-}
 
 GripperCommand::ResultPtr GripperCommand::makeResult(StopReason reason)
 {
