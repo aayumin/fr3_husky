@@ -433,6 +433,6 @@ def generate_launch_description():
         #     'recognized_speech_webrtc_script',
         #     default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'speech_webrtc.py']),
         # ),
-        DeclareLaunchArgument('avp_image_max_fps', default_value='15.0', description='Maximum per-stream WebRTC image send rate'),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='6.0', description='Maximum per-stream WebRTC image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])
