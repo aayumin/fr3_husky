@@ -592,40 +592,56 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
                             Eigen::Quaterniond q_raw(delta_R);
                             q_raw.normalize();
+                            if (q_raw.w() < 0.0) {
+                                q_raw.coeffs() = -q_raw.coeffs();
+                            }
+
                             Eigen::Quaterniond q_scaled = Eigen::Quaterniond::Identity().slerp(controller_ori_multiplier_, q_raw);
 
-                            if (q_delta_R_filtered_left_.dot(q_scaled) < 0.0) q_scaled.coeffs() = -q_scaled.coeffs();
+                            if (q_delta_R_filtered_left_.dot(q_scaled) < 0.0) {
+                                q_scaled.coeffs() = -q_scaled.coeffs();
+                            }
                             q_delta_R_filtered_left_ = q_delta_R_filtered_left_.slerp(0.15, q_scaled);
                             q_delta_R_filtered_left_.normalize();
                             Eigen::Matrix3d delta_R_scaled = q_delta_R_filtered_left_.toRotationMatrix();
-
-
 
                             
                             target_pose_diff.linear() = R_base_from_avp * delta_R_scaled * R_base_from_avp.transpose();  // delta_R
                         }
                     }
 
-                    // target_pose_diff.linear().setIdentity();
-                    // smoothed target pose
                     Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
                     raw_target.linear() = target_pose_diff.linear() * ee_data_[left_controller_ee_name_].x_init.linear();
                     raw_target.translation() = target_pose_diff.translation() + ee_data_[left_controller_ee_name_].x_init.translation();
 
-
                     double dt = fr3_husky_model_updater_.dt_;
 
-                    if (is_first_target_left_)
-                    {   
-                        prev_target_left_ = raw_target;
-                        is_first_target_left_ = false;
-                    }
+                    if (is_first_target_left_) { prev_target_left_ = raw_target; is_first_target_left_ = false; }
                     Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_left_, raw_target, dt);
 
-                    // target_vel = computeTargetVelocity(prev_target_left_, smooth_target, dt);
+                    Eigen::Affine3d current_ee = ee_data_[left_controller_ee_name_].x; 
+                    const double MAX_POS_DIFF = 0.03;
+                    const double MAX_ANG_DIFF = 0.08;
+
+                    Eigen::Vector3d pos_diff = smooth_target.translation() - current_ee.translation();
+                    if (pos_diff.norm() > MAX_POS_DIFF) smooth_target.translation() = current_ee.translation() + pos_diff.normalized() * MAX_POS_DIFF;
+
+                    Eigen::Quaterniond q_current(current_ee.linear());
+                    Eigen::Quaterniond q_smooth(smooth_target.linear());
+                    q_current.normalize();
+                    q_smooth.normalize();
+
+                    if (q_current.dot(q_smooth) < 0.0) q_smooth.coeffs() = -q_smooth.coeffs();
+
+                    double angular_diff = q_current.angularDistance(q_smooth);
+                    if (angular_diff > MAX_ANG_DIFF) {
+                        q_smooth = q_current.slerp(MAX_ANG_DIFF / angular_diff, q_smooth);
+                        smooth_target.linear() = q_smooth.toRotationMatrix();
+                    }
+
                     prev_target_left_ = smooth_target;
                     ee_data_[left_controller_ee_name_].x_desired = smooth_target;
-                    ee_data_[left_controller_ee_name_].xdot_desired  = target_vel;
+                    ee_data_[left_controller_ee_name_].xdot_desired = target_vel;
 
 
                 }
@@ -723,16 +739,22 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 
                             Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;  // R_H^T * R_h^1 * R_h^0^T * R_H^0
+                           
 
                             Eigen::Quaterniond q_raw(delta_R);
                             q_raw.normalize();
+                            if (q_raw.w() < 0.0) {
+                                q_raw.coeffs() = -q_raw.coeffs();
+                            }
+
                             Eigen::Quaterniond q_scaled = Eigen::Quaterniond::Identity().slerp(controller_ori_multiplier_, q_raw);
 
-                            if (q_delta_R_filtered_right_.dot(q_scaled) < 0.0) q_scaled.coeffs() = -q_scaled.coeffs();
+                            if (q_delta_R_filtered_right_.dot(q_scaled) < 0.0) {
+                                q_scaled.coeffs() = -q_scaled.coeffs();
+                            }
                             q_delta_R_filtered_right_ = q_delta_R_filtered_right_.slerp(0.15, q_scaled);
                             q_delta_R_filtered_right_.normalize();
                             Eigen::Matrix3d delta_R_scaled = q_delta_R_filtered_right_.toRotationMatrix();
-
 
 
                             // delta_R_scaled = Eigen::AngleAxisd(controller_ori_multiplier_ * angle, aa_hand.axis()).toRotationMatrix();
@@ -742,24 +764,51 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     }
                     // target_pose_diff.linear().setIdentity();
 
-                    // smoothed target pose
+                    
+
+                    // for debugging // remove
+                    if (dbg_cnt % 250 == 0)
+                    {
+                        std::cout << "target_pose_diff.translation() = " << target_pose_diff.translation().transpose() << std::endl;
+                        std::cout << "target_pose_diff.linear() = \n" << target_pose_diff.linear() << std::endl;
+                        std::cout << "================================" << std::endl;
+                    }
+
+
+
                     Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
                     raw_target.linear() = target_pose_diff.linear() * ee_data_[right_controller_ee_name_].x_init.linear();
                     raw_target.translation() = target_pose_diff.translation() + ee_data_[right_controller_ee_name_].x_init.translation();
 
-
                     double dt = fr3_husky_model_updater_.dt_;
-                    if (is_first_target_right_)
-                    {
-                        prev_target_right_ = raw_target;
-                        is_first_target_right_ = false;
-                    }
-                    Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
-                    // target_vel = computeTargetVelocity(prev_target_right_, smooth_target, dt);
-                    prev_target_right_ = smooth_target;
 
+                    if (is_first_target_right_) { prev_target_right_ = raw_target; is_first_target_right_ = false; }
+                    Eigen::Affine3d smooth_target = smoothAndLimit(prev_target_right_, raw_target, dt);
+
+                    Eigen::Affine3d current_ee = ee_data_[right_controller_ee_name_].x; 
+                    const double MAX_POS_DIFF = 0.03;
+                    const double MAX_ANG_DIFF = 0.08;
+
+                    Eigen::Vector3d pos_diff = smooth_target.translation() - current_ee.translation();
+                    if (pos_diff.norm() > MAX_POS_DIFF) smooth_target.translation() = current_ee.translation() + pos_diff.normalized() * MAX_POS_DIFF;
+
+                    Eigen::Quaterniond q_current(current_ee.linear());
+                    Eigen::Quaterniond q_smooth(smooth_target.linear());
+                    q_current.normalize();
+                    q_smooth.normalize();
+
+                    if (q_current.dot(q_smooth) < 0.0) q_smooth.coeffs() = -q_smooth.coeffs();
+
+                    double angular_diff = q_current.angularDistance(q_smooth);
+                    if (angular_diff > MAX_ANG_DIFF) {
+                        q_smooth = q_current.slerp(MAX_ANG_DIFF / angular_diff, q_smooth);
+                        smooth_target.linear() = q_smooth.toRotationMatrix();
+                    }
+
+                    prev_target_right_ = smooth_target;
                     ee_data_[right_controller_ee_name_].x_desired = smooth_target;
-                    ee_data_[right_controller_ee_name_].xdot_desired  = target_vel;
+                    ee_data_[right_controller_ee_name_].xdot_desired = target_vel;
+
 
                 }
             }
