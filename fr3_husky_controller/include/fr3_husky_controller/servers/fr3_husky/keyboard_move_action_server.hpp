@@ -161,8 +161,8 @@ private:
     int control_mode_;                     // 0: CLIK, 1: OSF, 2:QPIK, 3:QPID
     std::string left_controller_ee_name_;  // EE name for tracking left keyboard controller
     std::string right_controller_ee_name_; // EE name for tracking right keyboard controller
-    double controller_pos_multiplier_;
-    double controller_ori_multiplier_;
+    double controller_pos_multiplier_ = 1.0;
+    double controller_ori_multiplier_ = 1.0;
 
 
 
