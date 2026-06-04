@@ -707,8 +707,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                         if (constraint_yaw_only_)
                         {
                             Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;
-                            Eigen::Matrix3d delta_R_inv = delta_R.transpose(); // 행렬을 미리 뒤집음
-                            double yaw_delta_raw = std::atan2(delta_R_inv(1, 0), delta_R_inv(0, 0));
+                            double yaw_delta_raw = std::atan2(delta_R(1, 0), delta_R(0, 0));
                             double yaw_delta_scaled = controller_ori_multiplier_ * yaw_delta_raw;
                             while (yaw_delta_scaled - yaw_delta_filtered_left_ > M_PI)  yaw_delta_scaled -= 2.0 * M_PI;
                             while (yaw_delta_scaled - yaw_delta_filtered_left_ < -M_PI) yaw_delta_scaled += 2.0 * M_PI;
@@ -842,9 +841,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
 
 
                             Eigen::Matrix3d delta_R = R_head_cur_avp.transpose() * R_hand_cur_avp * R_hand_init_avp.transpose() * R_head_init_avp;
-
-                            Eigen::Matrix3d delta_R_inv = delta_R.transpose(); // 행렬을 미리 뒤집음
-                            double yaw_delta_raw = std::atan2(delta_R_inv(1, 0), delta_R_inv(0, 0));
+                            double yaw_delta_raw = std::atan2(delta_R(1, 0), delta_R(0, 0));
                             double yaw_delta_scaled = controller_ori_multiplier_ * yaw_delta_raw;
                             
                             while (yaw_delta_scaled - yaw_delta_filtered_right_ > M_PI)  yaw_delta_scaled -= 2.0 * M_PI;
