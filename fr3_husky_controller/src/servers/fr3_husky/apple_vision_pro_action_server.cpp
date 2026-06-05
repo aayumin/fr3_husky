@@ -824,8 +824,47 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     {
         case 0: // CLIK
             {   
-                const Eigen::VectorXd null_qdot_mani =
-                    Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
+                // const Eigen::VectorXd null_qdot_mani = Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
+
+
+                size_t mani_dof = fr3_husky_model_updater_.manipulator_dof_; 
+                Eigen::VectorXd null_qdot_mani = Eigen::VectorXd::Zero(mani_dof);
+                static int init_nullspace_loop_count = 0;
+
+                std::pair<Eigen::VectorXd, Eigen::VectorXd> joint_limits = fr3_husky_model_updater_.robot_data_->getJointPositionLimit();
+                const Eigen::VectorXd& q_min_total = joint_limits.first;
+                const Eigen::VectorXd& q_max_total = joint_limits.second;
+                const auto& act_idx_check = fr3_husky_model_updater_.robot_data_->getActuatorIndex();
+                Eigen::VectorXd q_min_mani = q_min_total.segment(act_idx_check.mani_start, mani_dof);
+                Eigen::VectorXd q_max_mani = q_max_total.segment(act_idx_check.mani_start, mani_dof);
+                Eigen::VectorXd q_mani_cur = fr3_husky_model_updater_.q_total_.segment(act_idx_check.mani_start, mani_dof);
+
+                // 안전 마진 및 회피 게인 설정
+                static constexpr double k_avoid = 2.0;       
+                static constexpr double margin_rad = 0.087;  
+                static constexpr double max_null_qdot = 0.05;
+
+
+                if (init_nullspace_loop_count < 250)  init_nullspace_loop_count++;
+                else {
+                    for (size_t i = 0; i < mani_dof; ++i) 
+                    {
+                        if (q_mani_cur(i) < q_min_mani(i) + margin_rad) 
+                        {
+                            double diff = (q_min_mani(i) + margin_rad) - q_mani_cur(i);
+                            null_qdot_mani(i) = k_avoid * std::pow(diff, 2);
+                        }
+                        else if (q_mani_cur(i) > q_max_mani(i) - margin_rad) 
+                        {
+                            double diff = q_mani_cur(i) - (q_max_mani(i) - margin_rad);
+                            null_qdot_mani(i) = -k_avoid * std::pow(diff, 2);
+                        }
+                        if (null_qdot_mani(i) > max_null_qdot) null_qdot_mani(i) = max_null_qdot;
+                        if (null_qdot_mani(i) < -max_null_qdot) null_qdot_mani(i) = -max_null_qdot;
+                    }
+                }
+
+                        
 
                 // --- Mobile null_qdot: drive mobile toward EE target (compensates for arm homing) ---
                 // As arm is pulled toward home by null space, EE error grows → mobile drives to fill the gap
