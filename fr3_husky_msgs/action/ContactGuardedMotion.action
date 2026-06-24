@@ -1,0 +1,19 @@
+# ContactGuardedMotion.action
+
+string[] ee_names
+geometry_msgs/Pose[] target_delta_poses
+
+float64 duration
+float64 pos_tolerance
+float64 ori_tolerance
+
+---
+bool success
+string message
+int32 error_code
+
+---
+float64 progress
+string status_message
+float64[] position_errors
+float64[] orientation_errors

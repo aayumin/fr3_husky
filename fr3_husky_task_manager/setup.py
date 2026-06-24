@@ -30,6 +30,7 @@ setup(
             'move_to_joint = fr3_husky_task_manager.move_to_joint:main',
             'task_space_move = fr3_husky_task_manager.task_space_move:main',
             'task_space_delta_move = fr3_husky_task_manager.task_space_delta_move:main',
+            'contact_guarded_motion = fr3_husky_task_manager.contact_guarded_motion:main',
             'gripper_move = fr3_husky_task_manager.gripper_move:main',
             'log = fr3_husky_task_manager.live_log:main',
             'image = fr3_husky_task_manager.image_streaming:main',
