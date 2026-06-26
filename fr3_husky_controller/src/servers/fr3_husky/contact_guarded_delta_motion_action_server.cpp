@@ -1,6 +1,6 @@
-// contact_guarded_motion_action_server.cpp
+// contact_guarded_delta_motion_action_server.cpp
 
-#include <fr3_husky_controller/servers/fr3_husky/contact_guarded_motion_action_server.hpp>
+#include <fr3_husky_controller/servers/fr3_husky/contact_guarded_delta_motion_action_server.hpp>
 
 #include <chrono>
 #include <stdexcept>
@@ -23,7 +23,7 @@ FR3HuskyModelUpdater& getFR3HuskyModelUpdater(
 
 }
 
-ContactGuardedMotion::ContactGuardedMotion(
+ContactGuardedDeltaMotion::ContactGuardedDeltaMotion(
     const std::string& name,
     const NodePtr& node,
     ModelUpdaterBase& model_updater)
@@ -31,10 +31,10 @@ ContactGuardedMotion::ContactGuardedMotion(
   fr3_husky_model_updater_(getFR3HuskyModelUpdater(model_updater, name))
 {
     mode_ = ServerMode::TASK;
-    RCLCPP_INFO(node_->get_logger(), "[%s] ContactGuardedMotion created", name_.c_str());
+    RCLCPP_INFO(node_->get_logger(), "[%s] ContactGuardedDeltaMotion created", name_.c_str());
 }
 
-bool ContactGuardedMotion::acceptGoal(const ActionT::Goal& goal)
+bool ContactGuardedDeltaMotion::acceptGoal(const ActionT::Goal& goal)
 {
     if (goal.ee_names.empty())
     {
@@ -42,10 +42,10 @@ bool ContactGuardedMotion::acceptGoal(const ActionT::Goal& goal)
         return false;
     }
 
-    if (goal.ee_names.size() != goal.target_poses.size())
+    if (goal.ee_names.size() != goal.target_delta_poses.size())
     {
         RCLCPP_WARN(node_->get_logger(),
-                    "[%s] Reject: ee_names.size() != target_poses.size()",
+                    "[%s] Reject: ee_names.size() != target_delta_poses_.size()",
                     name_.c_str());
         return false;
     }
@@ -62,13 +62,13 @@ bool ContactGuardedMotion::acceptGoal(const ActionT::Goal& goal)
     return true;
 }
 
-void ContactGuardedMotion::onGoalAccepted(const ActionT::Goal& goal)
+void ContactGuardedDeltaMotion::onGoalAccepted(const ActionT::Goal& goal)
 {
     ee_names_ = goal.ee_names;
-    target_poses_.clear();
+    target_delta_poses_.clear();
 
-    for (const auto& pose_msg : goal.target_poses)
-        target_poses_.push_back(poseMsgToAffine(pose_msg));
+    for (const auto& pose_msg : goal.target_delta_poses)
+        target_delta_poses_.push_back(poseMsgToAffine(pose_msg));
 
     duration_ = goal.duration > 0.0 ? goal.duration : 3.0;
     pos_tolerance_ = goal.pos_tolerance > 0.0 ? goal.pos_tolerance : 0.01;
@@ -86,9 +86,12 @@ void ContactGuardedMotion::onGoalAccepted(const ActionT::Goal& goal)
     RCLCPP_INFO(node_->get_logger(),
                 "[%s] goal accepted: %zu EE targets",
                 name_.c_str(), ee_names_.size());
+
+    RCLCPP_INFO(node_->get_logger(), "[%s] onGoalAccepted: ee_names=%zu delta=%zu",
+            name_.c_str(), ee_names_.size(), target_delta_poses_.size());
 }
 
-void ContactGuardedMotion::onStart()
+void ContactGuardedDeltaMotion::onStart()
 {
     fr3_husky_model_updater_.setInitFromCurrent();
 
@@ -119,12 +122,18 @@ void ContactGuardedMotion::onStart()
     contact_count_ = 0;
 
     start_time_set_ = false;
+
+
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
+
+    RCLCPP_INFO(node_->get_logger(), "[%s] onStart: ee_names=%zu start_poses=%zu ee_data=%zu",
+            name_.c_str(), ee_names_.size(), start_poses_.size(), ee_data_.size());
 }
 
 
 
-bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
+
+bool ContactGuardedDeltaMotion::isContactDetected(const rclcpp::Time& time)
 {
     if (!contact_torque_bias_set_ || !start_time_set_) return false;
 
@@ -195,9 +204,7 @@ bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
     return false;
 }
 
-
-
-Eigen::Affine3d ContactGuardedMotion::poseMsgToAffine(const geometry_msgs::msg::Pose& msg)
+Eigen::Affine3d ContactGuardedDeltaMotion::poseMsgToAffine(const geometry_msgs::msg::Pose& msg)
 {
     Eigen::Affine3d T = Eigen::Affine3d::Identity();
     T.translation() << msg.position.x, msg.position.y, msg.position.z;
@@ -217,7 +224,7 @@ Eigen::Affine3d ContactGuardedMotion::poseMsgToAffine(const geometry_msgs::msg::
     return T;
 }
 
-double ContactGuardedMotion::orientationError(const Eigen::Matrix3d& R_des, const Eigen::Matrix3d& R_cur)
+double ContactGuardedDeltaMotion::orientationError(const Eigen::Matrix3d& R_des, const Eigen::Matrix3d& R_cur)
 {
     Eigen::Matrix3d R_err = R_des * R_cur.transpose();
     Eigen::AngleAxisd aa(R_err);
@@ -226,7 +233,7 @@ double ContactGuardedMotion::orientationError(const Eigen::Matrix3d& R_des, cons
 
 
 
-Eigen::Vector6d ContactGuardedMotion::computeTargetVelocity(
+Eigen::Vector6d ContactGuardedDeltaMotion::computeTargetVelocity(
     const Eigen::Affine3d& prev,
     const Eigen::Affine3d& cur,
     double dt)
@@ -255,8 +262,7 @@ Eigen::Vector6d ContactGuardedMotion::computeTargetVelocity(
     return vel;
 }
 
-
-ContactGuardedMotion::ComputeResult ContactGuardedMotion::compute(
+ContactGuardedDeltaMotion::ComputeResult ContactGuardedDeltaMotion::compute(
     const rclcpp::Time& time,
     const rclcpp::Duration& /*period*/)
 {
@@ -282,20 +288,27 @@ ContactGuardedMotion::ComputeResult ContactGuardedMotion::compute(
         return ComputeResult::SUCCEEDED;
     }
 
-
     const double elapsed = (time - start_time_).seconds();
     const double s = std::clamp(elapsed / duration_, 0.0, 1.0);
-    const double dt = fr3_husky_model_updater_.dt_;
 
     std::vector<double> pos_errors;
     std::vector<double> ori_errors;
     bool all_reached = true;
 
+    if (ee_names_.size() != start_poses_.size() || ee_names_.size() != target_delta_poses_.size())
+    {
+        RCLCPP_ERROR(node_->get_logger(), "[%s] size mismatch: ee_names=%zu start_poses=%zu target_delta_poses=%zu", name_.c_str(), ee_names_.size(), start_poses_.size(), target_delta_poses_.size());
+        result_error_code_ = 1;
+        fr3_husky_model_updater_.haltCommands();
+        return ComputeResult::ABORTED;
+    }
+
     for (size_t i = 0; i < ee_names_.size(); ++i)
     {
         const auto& ee_name = ee_names_[i];
-        const Eigen::Affine3d& T0 = start_poses_[i];
-        const Eigen::Affine3d& T1 = target_poses_[i];
+        const Eigen::Affine3d& T0 = start_poses_.at(i);
+        const Eigen::Affine3d& T_delta = target_delta_poses_.at(i);
+        const Eigen::Affine3d T1 = T0 * T_delta;
 
         Eigen::Affine3d T_des = Eigen::Affine3d::Identity();
 
@@ -311,7 +324,6 @@ ContactGuardedMotion::ComputeResult ContactGuardedMotion::compute(
         ee_data_[ee_name].x_desired = T_des;
         ee_data_[ee_name].xdot_desired.setZero();
 
-
         const double p_err = (T1.translation() - ee_data_[ee_name].x.translation()).norm();
         const double o_err = orientationError(T1.linear(), ee_data_[ee_name].x.linear());
 
@@ -325,44 +337,24 @@ ContactGuardedMotion::ComputeResult ContactGuardedMotion::compute(
     Eigen::VectorXd null_qdot_mani = Eigen::VectorXd::Zero(fr3_husky_model_updater_.manipulator_dof_);
     Eigen::VectorXd null_qdot_mobile = Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
 
-    Eigen::VectorXd null_qdot(fr3_husky_model_updater_.robot_data_->getActuatorDof());
+    Eigen::VectorXd null_qdot = Eigen::VectorXd::Zero(fr3_husky_model_updater_.robot_data_->getActuatorDof());
     const auto& act_idx = fr3_husky_model_updater_.robot_data_->getActuatorIndex();
 
     null_qdot.segment(act_idx.mobi_start, fr3_husky_model_updater_.mobile_dof_) = null_qdot_mobile;
     null_qdot.segment(act_idx.mani_start, fr3_husky_model_updater_.manipulator_dof_) = null_qdot_mani;
 
-    fr3_husky_model_updater_.robot_controller_->CLIKStep(
-        ee_data_,
-        qdot_mobile,
-        fr3_husky_model_updater_.qdot_desired_total_,
-        null_qdot
-    );
+    fr3_husky_model_updater_.robot_controller_->CLIKStep(ee_data_, qdot_mobile, fr3_husky_model_updater_.qdot_desired_total_, null_qdot);
+    fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_ + fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
 
-    fr3_husky_model_updater_.q_desired_total_ =
-        fr3_husky_model_updater_.q_total_ +
-        fr3_husky_model_updater_.dt_ * fr3_husky_model_updater_.qdot_desired_total_;
-
-    fr3_husky_model_updater_.torque_desired_total_ =
-        fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(
-            fr3_husky_model_updater_.q_desired_total_,
-            fr3_husky_model_updater_.qdot_desired_total_,
-            false
-        );
-
+    fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
     fr3_husky_model_updater_.wheel_vel_desired_.setZero();
-
-    fr3_husky_model_updater_.writeCommand(
-        fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_,
-        fr3_husky_model_updater_.wheel_vel_desired_
-    );
-
+    fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_ - fr3_husky_model_updater_.g_total_, fr3_husky_model_updater_.wheel_vel_desired_);
 
     if (s >= 1.0 && all_reached) return ComputeResult::SUCCEEDED;
     return ComputeResult::RUNNING;
 }
 
-
-void ContactGuardedMotion::onStop(StopReason reason)
+void ContactGuardedDeltaMotion::onStop(StopReason reason)
 {
     if (reason != StopReason::SUCCEEDED)
         model_updater_.haltCommands();
@@ -374,7 +366,7 @@ void ContactGuardedMotion::onStop(StopReason reason)
     RCLCPP_INFO(node_->get_logger(), "[%s] stopped (%s)", name_.c_str(), rs);
 }
 
-ContactGuardedMotion::ResultPtr ContactGuardedMotion::makeResult(StopReason reason)
+ContactGuardedDeltaMotion::ResultPtr ContactGuardedDeltaMotion::makeResult(StopReason reason)
 {
     auto result = std::make_shared<ActionT::Result>();
 
@@ -400,6 +392,6 @@ ContactGuardedMotion::ResultPtr ContactGuardedMotion::makeResult(StopReason reas
     return result;
 }
 
-REGISTER_FR3_HUSKY_ACTION_SERVER(ContactGuardedMotion, "fr3_husky_contact_guarded_motion")
+REGISTER_FR3_HUSKY_ACTION_SERVER(ContactGuardedDeltaMotion, "fr3_husky_contact_guarded_delta_motion")
 
 }  // namespace fr3_husky_controller::servers::fr3_husky

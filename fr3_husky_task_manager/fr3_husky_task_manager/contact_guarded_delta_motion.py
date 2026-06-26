@@ -9,20 +9,20 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import Pose
-from fr3_husky_msgs.action import ContactGuardedMotion
+from fr3_husky_msgs.action import ContactGuardedDeltaMotion
 
 
-class ContactGuardedMotionClient(Node):
-    DEFAULT_LEFT_POSE = {
-        "position": [0.55, 0.25, 0.75],
-        "rpy": [3.141, 0.0, 0.52],
+class ContactGuardedDeltaMotionClient(Node):
+    DEFAULT_LEFT_DELTA_POSE = {
+        "position": [0.05, 0.0, 0.0],
+        "rpy": [0.0, 0.0, 0.52],
     }
 
     
 
-    DEFAULT_RIGHT_POSE = {
-        "position": [0.55, -0.25, 0.75],
-        "rpy": [3.141, 0.0, -0.52],
+    DEFAULT_RIGHT_DELTA_POSE = {
+        "position": [0.05, 0.0, 0.0],
+        "rpy": [0.0, 0.0, -0.52],
     }
 
     def __init__(
@@ -36,10 +36,10 @@ class ContactGuardedMotionClient(Node):
         pos_tolerance=0.01,
         ori_tolerance=0.05,
     ):
-        super().__init__("contact_guarded_motion_client")
+        super().__init__("_motion_client")
 
-        self._action_name = "/fr3_husky_contact_guarded_motion"
-        self._client = ActionClient(self, ContactGuardedMotion, self._action_name)
+        self._action_name = "/fr3_husky_contact_guarded_delta_motion"
+        self._client = ActionClient(self, ContactGuardedDeltaMotion, self._action_name)
 
         self._goal_handle = None
         self._result_future = None
@@ -51,19 +51,19 @@ class ContactGuardedMotionClient(Node):
 
         self.declare_parameter(
             "left_position",
-            left_position if left_position is not None else self.DEFAULT_LEFT_POSE["position"],
+            left_position if left_position is not None else self.DEFAULT_LEFT_DELTA_POSE["position"],
         )
         self.declare_parameter(
             "left_rpy",
-            left_rpy if left_rpy is not None else self.DEFAULT_LEFT_POSE["rpy"],
+            left_rpy if left_rpy is not None else self.DEFAULT_LEFT_DELTA_POSE["rpy"],
         )
         self.declare_parameter(
             "right_position",
-            right_position if right_position is not None else self.DEFAULT_RIGHT_POSE["position"],
+            right_position if right_position is not None else self.DEFAULT_RIGHT_DELTA_POSE["position"],
         )
         self.declare_parameter(
             "right_rpy",
-            right_rpy if right_rpy is not None else self.DEFAULT_RIGHT_POSE["rpy"],
+            right_rpy if right_rpy is not None else self.DEFAULT_RIGHT_DELTA_POSE["rpy"],
         )
 
         self.get_logger().info(f"Waiting for action server: {self._action_name}")
@@ -130,17 +130,17 @@ class ContactGuardedMotionClient(Node):
         self._validate_vector(right_position, "right_position", 3)
         self._validate_vector(right_rpy, "right_rpy", 3)
 
-        goal = ContactGuardedMotion.Goal()
+        goal = ContactGuardedDeltaMotion.Goal()
 
         if arm == "left":
             goal.ee_names = ["left_fr3_hand_tcp"]
-            goal.target_poses = [self.make_pose(left_position, left_rpy)]
+            goal.target_delta_poses = [self.make_pose(left_position, left_rpy)]
         elif arm == "right":
             goal.ee_names = ["right_fr3_hand_tcp"]
-            goal.target_poses = [self.make_pose(right_position, right_rpy)]
+            goal.target_delta_poses = [self.make_pose(right_position, right_rpy)]
         elif arm == "both":
             goal.ee_names = ["left_fr3_hand_tcp", "right_fr3_hand_tcp"]
-            goal.target_poses = [
+            goal.target_delta_poses = [
                 self.make_pose(left_position, left_rpy),
                 self.make_pose(right_position, right_rpy),
             ]
@@ -152,7 +152,7 @@ class ContactGuardedMotionClient(Node):
         goal.pos_tolerance = pos_tolerance
         goal.ori_tolerance = ori_tolerance
 
-        self.get_logger().info(f"Sending ContactGuardedMotion goal for arm={arm}")
+        self.get_logger().info(f"Sending ContactGuardedDeltaMotion goal for arm={arm}")
 
         send_goal_future = self._client.send_goal_async(
             goal,
@@ -166,11 +166,11 @@ class ContactGuardedMotionClient(Node):
             return
 
         if not goal_handle.accepted:
-            self.get_logger().warn("ContactGuardedMotion goal rejected")
+            self.get_logger().warn("ContactGuardedDeltaMotion goal rejected")
             return
 
         self._goal_handle = goal_handle
-        self.get_logger().info("ContactGuardedMotion goal accepted")
+        self.get_logger().info("ContactGuardedDeltaMotion goal accepted")
 
         self._result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, self._result_future)
@@ -196,7 +196,6 @@ class ContactGuardedMotionClient(Node):
             self.get_logger().error(
                 f"{param_name} must have exactly {size} elements, got {len(values)}"
             )
-            
             rclpy.shutdown()
 
     def cancel_goal(self):
@@ -205,7 +204,7 @@ class ContactGuardedMotionClient(Node):
         return self._goal_handle.cancel_goal_async()
 
 
-def run_contact_guarded_motion(
+def run_contact_guarded_delta_motion(
     arm="both",
     left_position=None,
     left_rpy=None,
@@ -218,7 +217,7 @@ def run_contact_guarded_motion(
     if not rclpy.ok():
         rclpy.init()
 
-    node = ContactGuardedMotionClient(
+    node = ContactGuardedDeltaMotionClient(
         arm=arm,
         left_position=left_position,
         left_rpy=left_rpy,
@@ -231,7 +230,7 @@ def run_contact_guarded_motion(
 
     try:
         node.send_goal_and_wait()
-        result = f"Contact-guarded motion completed successfully. [arm:{arm}]"
+        result = f"Contact-guarded delta motion completed successfully. [arm:{arm}]"
 
     except KeyboardInterrupt:
         cancel_future = node.cancel_goal()
@@ -244,8 +243,8 @@ def run_contact_guarded_motion(
                 rclpy.spin_until_future_complete(node, node._result_future, timeout_sec=5.0)
             except KeyboardInterrupt:
                 pass
-        
-        result = f"Contact-guarded motion interrupted and cancelled. [arm:{arm}]"
+
+        result = f"Contact-guarded delta motion interrupted and cancelled. [arm:{arm}]"
 
     finally:
         node.destroy_node()
@@ -270,7 +269,7 @@ def main(args=None):
         nargs=3,
         default=None,
         metavar=("X", "Y", "Z"),
-        help="Target position for the left end-effector.",
+        help="Target delta position for the left end-effector.",
     )
     parser.add_argument(
         "--left-rpy",
@@ -278,7 +277,7 @@ def main(args=None):
         nargs=3,
         default=None,
         metavar=("ROLL", "PITCH", "YAW"),
-        help="Target RPY orientation for the left end-effector [rad].",
+        help="Target delta RPY orientation for the left end-effector [rad].",
     )
     parser.add_argument(
         "--right-position",
@@ -286,7 +285,7 @@ def main(args=None):
         nargs=3,
         default=None,
         metavar=("X", "Y", "Z"),
-        help="Target position for the right end-effector.",
+        help="Target delta position for the right end-effector.",
     )
     parser.add_argument(
         "--right-rpy",
@@ -294,13 +293,13 @@ def main(args=None):
         nargs=3,
         default=None,
         metavar=("ROLL", "PITCH", "YAW"),
-        help="Target RPY orientation for the right end-effector [rad].",
+        help="Target delta RPY orientation for the right end-effector [rad].",
     )
     parser.add_argument(
         "--duration",
         type=float,
         default=3.0,
-        help="Contact-guarded motion duration [s].",
+        help="Contact-guarded delta motion duration [s].",
     )
     parser.add_argument(
         "--pos-tolerance",
@@ -317,7 +316,7 @@ def main(args=None):
 
     parsed_args = parser.parse_args()
 
-    run_contact_guarded_motion(
+    run_contact_guarded_delta_motion(
         arm=parsed_args.arm,
         left_position=parsed_args.left_position,
         left_rpy=parsed_args.left_rpy,

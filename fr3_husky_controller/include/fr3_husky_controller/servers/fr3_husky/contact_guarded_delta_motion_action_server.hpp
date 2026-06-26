@@ -11,7 +11,7 @@
 #include <Eigen/Geometry>
 
 #include <geometry_msgs/msg/pose.hpp>
-#include <fr3_husky_msgs/action/contact_guarded_motion.hpp>
+#include <fr3_husky_msgs/action/contact_guarded_delta_motion.hpp>
 
 #include <fr3_husky_controller/servers/action_server_base.hpp>
 #include <fr3_husky_controller/model/fr3_husky_model_updater.hpp>
@@ -19,10 +19,10 @@
 namespace fr3_husky_controller::servers::fr3_husky
 {
 
-class ContactGuardedMotion final : public ActionServerBase<fr3_husky_msgs::action::ContactGuardedMotion>
+class ContactGuardedDeltaMotion final : public ActionServerBase<fr3_husky_msgs::action::ContactGuardedDeltaMotion>
 {
 public:
-    using ActionT = fr3_husky_msgs::action::ContactGuardedMotion;
+    using ActionT = fr3_husky_msgs::action::ContactGuardedDeltaMotion;
     using Base = ActionServerBase<ActionT>;
     using ComputeResult = typename Base::ComputeResult;
     using StopReason = typename Base::StopReason;
@@ -30,8 +30,8 @@ public:
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    ContactGuardedMotion(const std::string& name, const NodePtr& node, ModelUpdaterBase& model_updater);
-    ~ContactGuardedMotion() override = default;
+    ContactGuardedDeltaMotion(const std::string& name, const NodePtr& node, ModelUpdaterBase& model_updater);
+    ~ContactGuardedDeltaMotion() override = default;
 
     int priority() const override { return 9; }
     bool allowPreemption() const override { return false; }
@@ -56,6 +56,7 @@ private:
 
     std::vector<std::string> ee_names_;
     std::vector<Eigen::Affine3d> start_poses_;
+    std::vector<Eigen::Affine3d> target_delta_poses_;
     std::vector<Eigen::Affine3d> target_poses_;
 
     rclcpp::Time start_time_;
@@ -64,7 +65,6 @@ private:
     double duration_{5.0};
     double pos_tolerance_{0.01};
     double ori_tolerance_{0.05};
-
 
     // for contact detection
     std::map<std::string, Eigen::VectorXd> start_joint_torque_;
@@ -75,7 +75,7 @@ private:
     int contact_debounce_count_{3};
     double contact_detection_start_time_{0.2};
 
-    
+
     bool isContactDetected(const rclcpp::Time& time);
 
     int32_t result_error_code_{0};

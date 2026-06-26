@@ -129,9 +129,8 @@ add_library(${PROJECT_NAME} SHARED
     src/servers/fr3_husky/task_space_move_action_server.cpp
     src/servers/fr3_husky/task_space_delta_move_action_server.cpp
     src/servers/fr3_husky/contact_guarded_motion_action_server.cpp
+    src/servers/fr3_husky/contact_guarded_delta_motion_action_server.cpp
     src/servers/fr3_husky/gripper_command_action_server.cpp
-    # src/servers/fr3/vive_tracker_action_server.cpp
-    # src/servers/fr3_husky/vive_tracker_action_server.cpp
     src/servers/fr3_husky/husky_move_action_server.cpp
     src/servers/fr3_husky/husky_pedal_action_server.cpp
     src/servers/fr3_husky/apple_vision_pro_action_server.cpp
