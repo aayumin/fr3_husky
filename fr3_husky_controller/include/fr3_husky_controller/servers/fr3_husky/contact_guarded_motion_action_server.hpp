@@ -67,8 +67,6 @@ private:
     double ori_tolerance_{0.05};
 
     // for contact detection
-    // Eigen::VectorXd start_joint_torque_;
-    // Eigen::VectorXd contact_torque_threshold_;
     std::map<std::string, Eigen::VectorXd> start_joint_torque_;
     std::map<std::string, Eigen::VectorXd> contact_torque_threshold_;
     bool contact_torque_bias_set_{false};

@@ -173,9 +173,6 @@ bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
         }
         
 
-        std::cout << "start_joint_torque: \n" << start_joint_torque << std::endl;
-        std::cout << "current_joint_torque: \n" << current_joint_torque << std::endl;
-        std::cout << "============================\n" << std::endl;
         const Eigen::VectorXd delta_torque = current_joint_torque - start_joint_torque;
 
         for (int i = 0; i < delta_torque.size(); ++i)
