@@ -1,0 +1,36 @@
+# ScrewMotion.action
+
+# Target arm: left, right, or both.
+string arm
+
+# Rotation axis expressed in the base/world frame. screw_z ignores this and uses [0, 0, 1].
+geometry_msgs/Vector3 axis_base
+
+# Direction from each current end-effector origin to its rotation center,
+# expressed in each current end-effector frame captured when the action starts.
+geometry_msgs/Vector3 center_direction_ee
+
+# Rotation radius [m]. The center direction is projected perpendicular to axis_base.
+float64 offset
+
+# Total rotation angle. Interpreted as radians unless angle_in_degrees is true.
+float64 angle
+bool angle_in_degrees
+
+# Total motion duration [s].
+float64 duration
+
+float64 pos_tolerance
+float64 ori_tolerance
+
+---
+bool success
+string message
+int32 error_code
+
+---
+float64 progress
+string status_message
+geometry_msgs/Pose[] desired_poses
+float64[] position_errors
+float64[] orientation_errors

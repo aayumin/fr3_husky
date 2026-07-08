@@ -32,6 +32,7 @@ setup(
             'task_space_delta_move = fr3_husky_task_manager.task_space_delta_move:main',
             'contact_guarded_motion = fr3_husky_task_manager.contact_guarded_motion:main',
             'nut_tightening = fr3_husky_task_manager.nut_tightening:main',
+            'screw = fr3_husky_task_manager.screw:main',
             'gripper_move = fr3_husky_task_manager.gripper_move:main',
             'log = fr3_husky_task_manager.live_log:main',
             'image = fr3_husky_task_manager.image_streaming:main',
