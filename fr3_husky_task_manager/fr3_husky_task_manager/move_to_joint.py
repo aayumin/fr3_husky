@@ -16,7 +16,7 @@ class MoveToJointClient(Node):
     DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
     DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
 
-    LEFT_CAMERA_POSITIONS = [-0.45, -0.85, 0.3, -2.25, -0.2, 1.42, 2.15]
+    # LEFT_CAMERA_POSITIONS = [-0.45, -0.85, 0.3, -2.25, -0.2, 1.42, 2.15]
     # LEFT_CAMERA_POSITIONS = [-0.95, -0.25, 0.1, -1.35, -0.2, 1.15, 2.0]  ## for coffee scene
     
 
@@ -45,7 +45,7 @@ class MoveToJointClient(Node):
             'left_target_positions',
             left_target_positions
             if left_target_positions is not None
-            else self.LEFT_CAMERA_POSITIONS,
+            else self.DEFAULT_LEFT_TARGET_POSITIONS,
         )
         self.declare_parameter(
             'right_target_positions',
