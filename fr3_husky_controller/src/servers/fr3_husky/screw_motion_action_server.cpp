@@ -85,6 +85,7 @@ void ScrewMotionBase::onGoalAccepted(const ActionT::Goal& goal)
     offset_ = goal.offset > 0.0 ? goal.offset : kDefaultOffset;
     const double raw_angle = std::abs(goal.angle) > kEps ? goal.angle : kDefaultAngle;
     angle_ = goal.angle_in_degrees ? raw_angle * DEG2RAD : raw_angle;
+    pitch_ = goal.pitch;
     duration_ = goal.duration > 0.0 ? goal.duration : kDefaultDuration;
     pos_tolerance_ = goal.pos_tolerance > 0.0 ? goal.pos_tolerance : kDefaultPosTolerance;
     ori_tolerance_ = goal.ori_tolerance > 0.0 ? goal.ori_tolerance : kDefaultOriTolerance;
@@ -98,8 +99,8 @@ void ScrewMotionBase::onGoalAccepted(const ActionT::Goal& goal)
     requestActivate();
 
     RCLCPP_INFO(node_->get_logger(),
-                "[%s] goal accepted: arm=%s offset=%.4f angle=%.4f rad duration=%.3f axis=[%.3f %.3f %.3f]",
-                name_.c_str(), arm_.c_str(), offset_, angle_, duration_,
+                "[%s] goal accepted: arm=%s offset=%.4f angle=%.4f rad pitch=%.6f m/rev duration=%.3f axis=[%.3f %.3f %.3f]",
+                name_.c_str(), arm_.c_str(), offset_, angle_, pitch_, duration_,
                 axis_base_.x(), axis_base_.y(), axis_base_.z());
 }
 
@@ -186,7 +187,9 @@ ScrewMotionBase::ComputeResult ScrewMotionBase::compute(
         const Eigen::Vector3d& center_base = centers_base_.at(ee_name);
 
         const Eigen::Vector3d start_radius = start_pose.translation() - center_base;
-        const Eigen::Vector3d p_des = center_base + R_axis * start_radius;
+        const double axial_displacement = pitch_ * theta / (2.0 * M_PI);
+        const Eigen::Vector3d p_des = center_base + R_axis * start_radius
+            + axis_base_ * axial_displacement;
         const Eigen::Matrix3d R_des = R_axis * start_pose.linear();
 
         Eigen::Affine3d T_des = Eigen::Affine3d::Identity();
@@ -194,7 +197,9 @@ ScrewMotionBase::ComputeResult ScrewMotionBase::compute(
         T_des.translation() = p_des;
 
         const Eigen::Vector3d omega_des = axis_base_ * theta_dot;
-        const Eigen::Vector3d v_des = omega_des.cross(p_des - center_base);
+        const double axial_velocity = pitch_ * theta_dot / (2.0 * M_PI);
+        const Eigen::Vector3d v_des = omega_des.cross(p_des - center_base)
+            + axis_base_ * axial_velocity;
 
         ee_data.x_desired = T_des;
         ee_data.xdot_desired.setZero();
