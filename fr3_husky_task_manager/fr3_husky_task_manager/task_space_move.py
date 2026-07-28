@@ -14,15 +14,15 @@ from fr3_husky_msgs.action import TaskSpaceMove
 
 class TaskSpaceMoveClient(Node):
     DEFAULT_LEFT_POSE = {
-        "position": [0.55, 0.25, 0.75],
-        "rpy": [3.141, 0.0, 0.52],
+        "position": [0.57, 0.25, 0.78],
+        "rpy": [3.141, 0.0, 0.5],
     }
 
     
 
     DEFAULT_RIGHT_POSE = {
-        "position": [0.55, -0.25, 0.75],
-        "rpy": [3.141, 0.0, -0.52],
+        "position": [0.57, -0.25, 0.78],
+        "rpy": [3.141, 0.0, -0.5],
     }
 
     def __init__(
