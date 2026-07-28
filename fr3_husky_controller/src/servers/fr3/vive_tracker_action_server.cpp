@@ -444,7 +444,7 @@ ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& time, const 
 
 void ViveTracker::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_model_updater_.haltCommands();
 
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)

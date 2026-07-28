@@ -143,7 +143,7 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
 
         if (model_updater_.HasEffortCommandInterface())
         {
-            model_updater_.haltCommands();
+            fr3_husky_model_updater_.haltCommands();
         }
         else if (model_updater_.HasVelocityCommandInterface())
         {
@@ -454,7 +454,7 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
 
 void JointTrajectoryController::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_husky_model_updater_.haltCommands();
 
     trajectory_ = trajectory_msgs::msg::JointTrajectory{};
     goal_to_cmd_index_.clear();

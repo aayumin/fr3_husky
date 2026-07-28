@@ -365,7 +365,7 @@ ContactGuardedMotion::ComputeResult ContactGuardedMotion::compute(
 void ContactGuardedMotion::onStop(StopReason reason)
 {
     if (reason != StopReason::SUCCEEDED)
-        model_updater_.haltCommands();
+        fr3_husky_model_updater_.haltCommands();
 
     const char* rs = (reason == StopReason::CANCELED)  ? "canceled"  :
                      (reason == StopReason::SUCCEEDED) ? "succeeded" :

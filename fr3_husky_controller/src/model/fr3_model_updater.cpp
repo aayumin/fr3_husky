@@ -315,6 +315,9 @@ void FR3ModelUpdater::haltCommands()
             }
         }
     }
+
+    for (auto & h : robot_handle_.left_wheels)  h.command.get().set_value(0.0);
+    for (auto & h : robot_handle_.right_wheels) h.command.get().set_value(0.0);
 }
 
 bool FR3ModelUpdater::GripperMove(const std::string robot_name, const double width, const double speed)

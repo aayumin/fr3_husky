@@ -83,7 +83,7 @@ HuskyMove::ComputeResult HuskyMove::compute(const rclcpp::Time& /*time*/, const 
 
 void HuskyMove::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_husky_model_updater_.haltCommands();
 
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)

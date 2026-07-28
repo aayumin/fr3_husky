@@ -277,7 +277,7 @@ OmegaHaptic::ComputeResult OmegaHaptic::compute(const rclcpp::Time& time, const 
 
 void OmegaHaptic::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_model_updater_.haltCommands();
 
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)

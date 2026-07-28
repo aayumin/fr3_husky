@@ -117,7 +117,7 @@ GravityCompensation::ComputeResult GravityCompensation::compute(const rclcpp::Ti
 
 void GravityCompensation::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_husky_model_updater_.haltCommands();
 
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)

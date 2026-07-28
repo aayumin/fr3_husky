@@ -124,7 +124,7 @@ void HuskyPedal::onStop(StopReason reason)
         pedal_sub_.reset();
         resetCommand();
         fr3_husky_model_updater_.wheel_vel_desired_.setZero();
-        model_updater_.haltCommands();
+        fr3_husky_model_updater_.haltCommands();
     }
 
     const char* reason_str = "none";
