@@ -63,6 +63,7 @@ private:
     void onStart() override;
     ComputeResult compute(const rclcpp::Time& time, const rclcpp::Duration& period) override;
     void onStop(StopReason reason) override;
+    void clear();
     ResultPtr makeResult(StopReason reason) override;
 
 
