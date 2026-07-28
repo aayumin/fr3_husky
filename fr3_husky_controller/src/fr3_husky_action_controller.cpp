@@ -379,8 +379,8 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     model_updater_->setWheelEncoderMultiplier(params_.wheel_encoder_multiplier);
 
 
-    action_servers_ = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
-    active_server_.reset();
+    task_servers_ = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
+    active_task_.reset();
     
     idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
 
