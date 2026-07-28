@@ -1,7 +1,5 @@
 #include "fr3_husky_controller/model/fr3_husky_model_updater.hpp"
 
-#include <cmath>
-
 namespace fr3_husky_controller
 {
 
@@ -63,8 +61,6 @@ bool FR3HuskyModelUpdater::initialize(size_t num_robots,
     base_pose_w_.setIdentity();
     base_vel_w_.setZero();
     base_vel_b_.setZero();
-    base_pose_w_wheel_.setIdentity();
-    base_vel_b_wheel_.setZero();
     base_pose_w_desired_.setIdentity();
     base_vel_w_desired_.setZero();
     base_vel_b_desired_.setZero();
@@ -86,26 +82,17 @@ bool FR3HuskyModelUpdater::initialize(size_t num_robots,
         xdot_w_desired_[ee_name] = Eigen::Vector6d::Zero();
     }
 
-    filtered_odometry_buf_.writeFromNonRT(std::shared_ptr<nav_msgs::msg::Odometry>{});
-    ensureFilteredOdometrySubscription();
+    // for debugging
+    command_mani_debug_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>( "/debug/command_mani", 10);
+    command_mobi_debug_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>("/debug/command_mobi", 10);
+    x_m_pub_ = node_->create_publisher<geometry_msgs::msg::PoseArray>("/debug/x_m", 10);
+    xdot_m_l_pub_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("/debug/xdot_m_l", 10);
+    xdot_m_r_pub_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("/debug/xdot_m_r", 10);
+    debug_publish_timer_ = node_->create_wall_timer(std::chrono::duration<double>(1.0 / 60.0), std::bind(&FR3HuskyModelUpdater::publishDebugState, this));
+
+
 
     return true;
-}
-
-void FR3HuskyModelUpdater::ensureFilteredOdometrySubscription()
-{
-    if (!node_ || filtered_odometry_sub_)
-    {
-        return;
-    }
-
-    filtered_odometry_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
-        "/odometry/filtered",
-        rclcpp::QoS(1),
-        [this](const nav_msgs::msg::Odometry::SharedPtr msg)
-        {
-            filtered_odometry_buf_.writeFromNonRT(msg);
-        });
 }
 
 void FR3HuskyModelUpdater::setDRCRobotData(const std::shared_ptr<drc::MobileManipulator::RobotData>&& robot_data)
@@ -208,8 +195,8 @@ void FR3HuskyModelUpdater::updateJointStates()
         left_vel /= static_cast<double>(robot_handle_.left_wheels.size());
         right_vel /= static_cast<double>(robot_handle_.right_wheels.size());
     }
-    wheel_pos_ = Eigen::Vector2d(left_pos * wheel_encoder_multiplier_, right_pos * wheel_encoder_multiplier_);
-    wheel_vel_ = Eigen::Vector2d(left_vel * wheel_encoder_multiplier_, right_vel * wheel_encoder_multiplier_);
+    wheel_pos_ = Eigen::Vector2d(left_pos, right_pos);
+    wheel_vel_ = Eigen::Vector2d(left_vel, right_vel);
 }
 
 void FR3HuskyModelUpdater::updateRobotData()
@@ -225,41 +212,13 @@ void FR3HuskyModelUpdater::updateRobotData()
         return;
     }
 
-    // Always integrate raw wheel odometry — used for /odom publishing (EKF input, no feedback loop)
-    base_pose_w_wheel_ = robot_data_->computeBasePose(wheel_pos_, wheel_vel_);
-    base_vel_b_wheel_  = robot_data_->computeBaseVel(wheel_pos_, wheel_vel_);
-
-    // Use /odometry/filtered for control state when available (better accuracy)
-    ensureFilteredOdometrySubscription();
-
-    const auto* filtered_odometry_ptr = filtered_odometry_buf_.readFromRT();
-    const std::shared_ptr<nav_msgs::msg::Odometry> filtered_odometry =
-        (filtered_odometry_ptr != nullptr) ? *filtered_odometry_ptr : nullptr;
-
-    if (filtered_odometry)
-    {
-        const auto& pose = filtered_odometry->pose.pose;
-        const auto& twist = filtered_odometry->twist.twist;
-        const auto& q = pose.orientation;
-
-        const double yaw = std::atan2(
-            2.0 * (q.w * q.z + q.x * q.y),
-            1.0 - 2.0 * (q.y * q.y + q.z * q.z));
-
-        base_pose_w_.translation() << pose.position.x, pose.position.y;
-        base_pose_w_.linear() = Eigen::Rotation2Dd(yaw).toRotationMatrix();
-        base_vel_b_ << twist.linear.x, twist.linear.y, twist.angular.z;
-    }
-    else
-    {
-        base_pose_w_ = base_pose_w_wheel_;
-        base_vel_b_  = base_vel_b_wheel_;
-    }
-
+    // using odometry for getting virtual joint (you can use SLAM instead)
+    base_pose_w_ = robot_data_->computeBasePose(wheel_pos_, wheel_vel_);
+    base_vel_b_  = robot_data_->computeBaseVel(wheel_pos_, wheel_vel_);
     base_vel_w_.head(2) = base_pose_w_.linear() * base_vel_b_.head(2);
     base_vel_w_(2) = base_vel_b_(2);
 
-    const Eigen::Vector3d base_pose_w{base_pose_w_.translation()(0),
+    const Eigen::Vector3d base_pose_w{base_pose_w_.translation()(0), 
                                       base_pose_w_.translation()(1),
                                       Eigen::Rotation2Dd(base_pose_w_.linear()).angle()};
 

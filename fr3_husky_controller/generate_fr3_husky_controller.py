@@ -321,17 +321,6 @@ private:
     bool halt_initialized_ = false;
     std::map<std::string, double> halt_position_;
 
-    // ========================================================================
-    // ========================== Update Timing ================================
-    // ========================================================================
-    static constexpr double   kUpdatePeriodMs             = 1.0;
-    static constexpr int      kUpdateWindowSize           = 1000;
-    static constexpr int      kUpdateOverrunWarnThreshold = 10;
-    int    update_cycle_count_    = 0;
-    int    update_overrun_count_  = 0;
-    double update_overrun_sum_ms_ = 0.0;
-    double update_overrun_max_ms_ = 0.0;
-
     struct WheelHandle
     {{
         std::vector<std::reference_wrapper<const hardware_interface::LoanedStateInterface>> state;
@@ -845,30 +834,15 @@ controller_interface::CallbackReturn {class_name}::on_deactivate(const rclcpp_li
 
 controller_interface::return_type {class_name}::update(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 {{
-    #if ROS_DISTRO == 22
-        if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+    if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+    {{
+        if (!is_halted_)
         {{
-            if (!is_halted_)
-            {{
-                haltCommands();
-                is_halted_ = true;
-            }}
-            return controller_interface::return_type::OK;
+            haltCommands();
+            is_halted_ = true;
         }}
-    #else
-        if (get_lifecycle_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
-        {{
-            if (!is_halted_)
-            {{
-                haltCommands();
-                is_halted_ = true;
-            }}
-            return controller_interface::return_type::OK;
-        }}
-    #endif
-
-    struct timespec update_start_ts;
-    clock_gettime(CLOCK_MONOTONIC, &update_start_ts);
+        return controller_interface::return_type::OK;
+    }}
 
     updateJointStates();
     updateRobotData();
@@ -929,34 +903,6 @@ controller_interface::return_type {class_name}::update(const rclcpp::Time& /*tim
     {{
         for (const auto& h : registered_left_wheel_handles_)  h.command.get().set_value(0.0);
         for (const auto& h : registered_right_wheel_handles_) h.command.get().set_value(0.0);
-    }}
-
-    struct timespec update_end_ts;
-    clock_gettime(CLOCK_MONOTONIC, &update_end_ts);
-    const double elapsed_ms = static_cast<double>(update_end_ts.tv_sec  - update_start_ts.tv_sec)  * 1e3
-                            + static_cast<double>(update_end_ts.tv_nsec - update_start_ts.tv_nsec) * 1e-6;
-
-    if (elapsed_ms > kUpdatePeriodMs)
-    {{
-        ++update_overrun_count_;
-        update_overrun_sum_ms_ += elapsed_ms;
-        if (elapsed_ms > update_overrun_max_ms_) update_overrun_max_ms_ = elapsed_ms;
-    }}
-    if (++update_cycle_count_ >= kUpdateWindowSize)
-    {{
-        if (update_overrun_count_ >= kUpdateOverrunWarnThreshold)
-        {{
-            const double avg_ms = update_overrun_sum_ms_ / update_overrun_count_;
-            LOGE(get_node(),
-                "[Controller] update() overran %.0f ms budget %d/%d times in the last %d cycles "
-                "(avg: %.3f ms, max: %.3f ms). Consider reducing computation load.",
-                kUpdatePeriodMs, update_overrun_count_, kUpdateWindowSize, kUpdateWindowSize,
-                avg_ms, update_overrun_max_ms_);
-        }}
-        update_cycle_count_    = 0;
-        update_overrun_count_  = 0;
-        update_overrun_sum_ms_ = 0.0;
-        update_overrun_max_ms_ = 0.0;
     }}
 
     return controller_interface::return_type::OK;
@@ -1102,8 +1048,8 @@ void {class_name}::updateJointStates()
         left_pos /= n;  right_pos /= n;
         left_vel /= n;  right_vel /= n;
     }}
-    wheel_pos_ = Eigen::Vector2d(left_pos * params_.wheel_encoder_multiplier, right_pos * params_.wheel_encoder_multiplier);
-    wheel_vel_ = Eigen::Vector2d(left_vel * params_.wheel_encoder_multiplier, right_vel * params_.wheel_encoder_multiplier);
+    wheel_pos_ = Eigen::Vector2d(left_pos, right_pos);
+    wheel_vel_ = Eigen::Vector2d(left_vel, right_vel);
 }}
 
 void {class_name}::updateRobotData()

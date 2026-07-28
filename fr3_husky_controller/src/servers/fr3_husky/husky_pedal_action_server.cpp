@@ -33,15 +33,39 @@ HuskyPedal::HuskyPedal(const std::string& name, const NodePtr& node, ModelUpdate
     cmd_vel_.setZero();
     q_hold_.setZero(model_updater.manipulator_dof_);
 
-    axis_left_ = static_cast<int>(node_->declare_parameter<int>(name_ + ".axis_left", 0));
-    axis_right_ = static_cast<int>(node_->declare_parameter<int>(name_ + ".axis_right", 1));
-    axis_yaw_mag_ = static_cast<int>(node_->declare_parameter<int>(name_ + ".axis_yaw_mag", 2));
-    scale_linear_ = node_->declare_parameter<double>(name_ + ".scale_linear", 0.5);
-    scale_angular_ = node_->declare_parameter<double>(name_ + ".scale_angular", 0.5);
-    deadzone_pedal_ = node_->declare_parameter<double>(name_ + ".deadzone_pedal", 0.05);
-    deadzone_yaw_mag_ = node_->declare_parameter<double>(name_ + ".deadzone_yaw_mag", 0.05);
-    enable_button_ = static_cast<int>(node_->declare_parameter<int>(name_ + ".enable_button", -1));
-    pedal_topic_ = node_->declare_parameter<std::string>(name_ + ".pedal_topic", "/joy");
+    // 중복 선언을 방지하기 위해 이미 선언된 파라미터가 있으면 가져오고, 없으면 선언하는 안전한 함수 정의
+    auto safe_get_int = [this](const std::string& param_name, int default_val) -> int {
+        if (node_->has_parameter(param_name)) {
+            return static_cast<int>(node_->get_parameter(param_name).as_int());
+        }
+        return static_cast<int>(node_->declare_parameter<int>(param_name, default_val));
+    };
+
+    auto safe_get_double = [this](const std::string& param_name, double default_val) -> double {
+        if (node_->has_parameter(param_name)) {
+            return node_->get_parameter(param_name).as_double();
+        }
+        return node_->declare_parameter<double>(param_name, default_val);
+    };
+
+    auto safe_get_string = [this](const std::string& param_name, const std::string& default_val) -> std::string {
+        if (node_->has_parameter(param_name)) {
+            return node_->get_parameter(param_name).as_string();
+        }
+        return node_->declare_parameter<std::string>(param_name, default_val);
+    };
+
+    // 안전하게 파라미터 값 할당 (중복 선언 에러 완벽 해결)
+    axis_left_        = safe_get_int(name_ + ".axis_left", 0);
+    axis_right_       = safe_get_int(name_ + ".axis_right", 1);
+    axis_yaw_mag_     = safe_get_int(name_ + ".axis_yaw_mag", 2);
+    scale_linear_     = safe_get_double(name_ + ".scale_linear", 0.5);
+    scale_angular_    = safe_get_double(name_ + ".scale_angular", 0.5);
+    deadzone_pedal_   = safe_get_double(name_ + ".deadzone_pedal", 0.05);
+    deadzone_yaw_mag_ = safe_get_double(name_ + ".deadzone_yaw_mag", 0.05);
+    enable_button_    = safe_get_int(name_ + ".enable_button", -1);
+    pedal_topic_      = safe_get_string(name_ + ".pedal_topic", "joy");
+
 
     RCLCPP_INFO(node_->get_logger(), "[%s] HuskyPedal created (topic: %s)", name_.c_str(), pedal_topic_.c_str());
 }

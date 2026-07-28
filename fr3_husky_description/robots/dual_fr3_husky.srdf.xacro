@@ -32,8 +32,7 @@
                            hand="$(arg hand)"
                            ee_id="franka_hand"
                            no_prefix="false"
-                           arm_prefix="left_"
-                           include_virtual_joint="false">
+                           arm_prefix="left_">
     </xacro:franka_arm_srdf>
 
     <!-- left arm - right arm -->
@@ -115,8 +114,7 @@
                            hand="$(arg hand)"
                            ee_id="franka_hand"
                            no_prefix="false"
-                           arm_prefix="right_"
-                           include_virtual_joint="false">
+                           arm_prefix="right_">
     </xacro:franka_arm_srdf>
 
     <!-- right arm - base -->
@@ -1104,236 +1102,9 @@
             <disable_collisions link1="right_fr3_rightfinger" link2="right_fr3_link1" reason="User"/>
             <disable_collisions link1="right_fr3_rightfinger" link2="right_fr3_link2" reason="User"/>
 
-
-    <!-- left link - base -->
-    <disable_collisions link1="left_fr3_link0" link2="base_link" reason="Adjacent"/>
-    <disable_collisions link1="left_fr3_link0" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="left_fr3_link0" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link0" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link0" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link0" link2="top_structure_link" reason="Default"/>
-    <disable_collisions link1="left_fr3_link1" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="top_structure_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="top_structure_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="top_structure_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link4" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_fr3_link4" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link4" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="left_fr3_link4" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link4" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="left_fr3_link5" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-
-    <!-- right link - base -->
-    <disable_collisions link1="right_fr3_link0" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link0" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="right_fr3_link0" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
-    <disable_collisions link1="right_fr3_link0" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link0" link2="base_link"       reason="Adjacent"/>
-    <disable_collisions link1="right_fr3_link0" link2="top_structure_link" reason="Default"/>
-    <disable_collisions link1="right_fr3_link1" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link1" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="right_fr3_link1" link2="base_link"       reason="Never"/>
-    <disable_collisions link1="right_fr3_link1" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
-    <disable_collisions link1="right_fr3_link1" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link1" link2="top_structure_link" reason="Never"/>
-    <disable_collisions link1="right_fr3_link2" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link2" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="right_fr3_link2" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
-    <disable_collisions link1="right_fr3_link2" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link2" link2="base_link"       reason="Never"/>
-    <disable_collisions link1="right_fr3_link2" link2="top_structure_link" reason="Never"/>
-    <disable_collisions link1="right_fr3_link3" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link3" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="right_fr3_link3" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
-    <disable_collisions link1="right_fr3_link3" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link3" link2="base_link"       reason="Never"/>
-    <disable_collisions link1="right_fr3_link3" link2="top_structure_link" reason="Never"/>
-    <disable_collisions link1="right_fr3_link4" link2="front_left_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link4" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-    <disable_collisions link1="right_fr3_link4" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
-    <disable_collisions link1="right_fr3_link4" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
-    <disable_collisions link1="right_fr3_link4" link2="base_link"       reason="Never"/>
-    <disable_collisions link1="right_fr3_link5" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
-
-    <!-- base - base -->
-    <xacro:husky_base_srdf base_link="base_link"/>
-
-    <!-- left link - right link -->
-    <disable_collisions link1="left_fr3_link0" link2="right_fr3_link0" reason="Adjacent"/>
-    <disable_collisions link1="left_fr3_link0" link2="right_fr3_link1" reason="Never"/>
-    <disable_collisions link1="left_fr3_link0" link2="right_fr3_link2" reason="Never"/>
-    <disable_collisions link1="left_fr3_link0" link2="right_fr3_link3" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="right_fr3_link0" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="right_fr3_link1" reason="Never"/>
-    <disable_collisions link1="left_fr3_link1" link2="right_fr3_link2" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="right_fr3_link0" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="right_fr3_link1" reason="Never"/>
-    <disable_collisions link1="left_fr3_link2" link2="right_fr3_link2" reason="Never"/>
-    <disable_collisions link1="left_fr3_link3" link2="right_fr3_link0" reason="Never"/>
-
-        </xacro:if>
-    </xacro:if>
-
-    <xacro:if value="$(arg with_sc)"> <!-- if mobile  & is sc-->
-
-        <!-- left link - base -->
-        <disable_collisions link1="left_fr3_link5" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link6" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link7" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link5" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link6" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link7" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link4" link2="top_structure_link" reason="User"/>
-        <disable_collisions link1="left_fr3_link5" link2="base_link" reason="User"/>
-        <disable_collisions link1="left_fr3_link5" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link5" link2="top_structure_link" reason="User"/>
-        <disable_collisions link1="left_fr3_link6" link2="base_link" reason="User"/>
-        <disable_collisions link1="left_fr3_link6" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link6" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link6" link2="top_structure_link" reason="User"/>
-        <disable_collisions link1="left_fr3_link7" link2="base_link" reason="User"/>
-        <disable_collisions link1="left_fr3_link7" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link7" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="left_fr3_link7" link2="top_structure_link" reason="User"/>
-
-        <!-- left link sc - base -->
-        <disable_collisions link1="left_fr3_link0_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link4_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link4_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="top_structure_link" reason="Default"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="base_link" reason="Default"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="top_structure_link" reason="Default"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link4_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link4_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link4_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="left_fr3_link4_sc" link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="left_fr3_link5_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-
-        <!-- right link - base -->
-        <disable_collisions link1="right_fr3_link5" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link6" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link7" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link5" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link6" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link7" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link5" link2="base_link" reason="User"/>
-        <disable_collisions link1="right_fr3_link6" link2="base_link" reason="User"/>
-        <disable_collisions link1="right_fr3_link7" link2="base_link" reason="User"/>
-        <disable_collisions link1="right_fr3_link6" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link7" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link5" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link6" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link7" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-        <disable_collisions link1="right_fr3_link4" link2="top_structure_link" reason="User"/>
-        <disable_collisions link1="right_fr3_link5" link2="top_structure_link" reason="User"/>
-        <disable_collisions link1="right_fr3_link6" link2="top_structure_link" reason="User"/>
-        <disable_collisions link1="right_fr3_link7" link2="top_structure_link" reason="User"/>
-
-        <!-- right link sc - base -->
-        <disable_collisions link1="right_fr3_link0_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link1_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link2_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link3_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link4_sc" link2="front_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link0_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link1_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link2_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link3_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link4_sc" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link0_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="right_fr3_link1_sc" link2="base_link" reason="Default"/>
-        <disable_collisions link1="right_fr3_link2_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="right_fr3_link3_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="right_fr3_link4_sc" link2="base_link" reason="Never"/>
-        <disable_collisions link1="right_fr3_link0_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link1_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link2_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link3_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link4_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link5_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link6_sc" link2="rear_left_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link0_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link1_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link2_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link3_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link4_sc" link2="rear_right_wheel${wheel_suffix}" reason="Never"/>
-        <disable_collisions link1="right_fr3_link0_sc" link2="top_structure_link" reason="Default"/>
-        <disable_collisions link1="right_fr3_link1_sc" link2="top_structure_link" reason="Default"/>
-        <disable_collisions link1="right_fr3_link2_sc" link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="right_fr3_link3_sc" link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="right_fr3_link4_sc" link2="top_structure_link" reason="Never"/>
-
-        <!-- left link sc - right link sc -->
-        <disable_collisions link1="left_fr3_link0_sc" link2="right_fr3_link0_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="right_fr3_link1_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="right_fr3_link2_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link0_sc" link2="right_fr3_link3_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="right_fr3_link0_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="right_fr3_link1_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="right_fr3_link2_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link1_sc" link2="right_fr3_link3_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="right_fr3_link0_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="right_fr3_link1_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link2_sc" link2="right_fr3_link2_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="right_fr3_link0_sc" reason="Never"/>
-        <disable_collisions link1="left_fr3_link3_sc" link2="right_fr3_link1_sc" reason="Never"/>
-
-
-        <xacro:if value="$(arg hand)"> <!-- if mobile  & is sc & is hand-->
-
-            <!-- left hand - base -->
-            <disable_collisions link1="left_fr3_hand" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_leftfinger" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_rightfinger" link2="front_left_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_hand" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_leftfinger" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_rightfinger" link2="front_right_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_hand" link2="base_link" reason="User"/>
-            <disable_collisions link1="left_fr3_hand" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_hand" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_hand" link2="top_structure_link" reason="User"/>
-            <disable_collisions link1="left_fr3_leftfinger" link2="base_link" reason="User"/>
-            <disable_collisions link1="left_fr3_leftfinger" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_leftfinger" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_leftfinger" link2="top_structure_link" reason="User"/>
-            <disable_collisions link1="left_fr3_rightfinger" link2="base_link" reason="User"/>
-            <disable_collisions link1="left_fr3_rightfinger" link2="rear_left_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_rightfinger" link2="rear_right_wheel${wheel_suffix}" reason="User"/>
-            <disable_collisions link1="left_fr3_rightfinger" link2="top_structure_link" reason="User"/>
+            <disable_collisions link1="right_d435i_link" link2="right_fr3_link0" reason="User"/>
+            <disable_collisions link1="right_d435i_link" link2="right_fr3_link1" reason="User"/>
+            <disable_collisions link1="right_d435i_link" link2="right_fr3_link2" reason="User"/>
 
             <!-- right hand - base -->
             <disable_collisions link1="right_fr3_hand" link2="base_link"                        reason="User"/>

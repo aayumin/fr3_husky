@@ -31,8 +31,7 @@
                            hand="$(arg hand)"
                            ee_id="franka_hand"
                            no_prefix="false"
-                           arm_prefix="${modified_prefix}"
-                           include_virtual_joint="false">
+                           arm_prefix="${modified_prefix}">
     </xacro:franka_arm_srdf>
 
     <xacro:if value="$(arg with_sc)">
