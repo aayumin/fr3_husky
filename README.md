@@ -125,7 +125,9 @@ ros2 launch fr3_husky_controller fr3_husky_action_controller.launch.py \
   - `use_fake_hardware`: `true|false`
   - `fake_sensor_commands`: `true|false`
   - `use_mujoco`: `true|false`
-  - `joy_dev`, `joy_deadzone`, `joy_autorepeat_rate` (`fr3_husky_action_controller.launch.py` only)
+  - `pedal`, `joy_dev`, `joy_topic`, `local_joy_topic`, `launch_local_joy` (`fr3_husky_action_controller.launch.py` only)
+    - default external teleop Joy input: `/joy`
+    - default local joystick output for PS4 R1 e-stop: `/estop_joy`
 
 - Action usage examples (after action controller is running):
 ```bash

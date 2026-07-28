@@ -1,3 +1,5 @@
+#   ros2 launch fr3_husky_controller fr3_husky_action_controller.launch.py robot_side:=dual load_gripper:=true use_mujoco:=true pedal:=true
+
 import os
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["PYOPENGL_PLATFORM"] = "egl"
@@ -56,16 +58,41 @@ def _normalize_robot_sides(robot_sides):
     return normalized
 
 
+def _resolve_auto_bool(raw_value, auto_value, arg_name):
+    value = raw_value.strip().lower()
+    if value == 'auto':
+        return auto_value
+    if value in ('true', '1', 'yes', 'on'):
+        return True
+    if value in ('false', '0', 'no', 'off'):
+        return False
+    raise RuntimeError(f"{arg_name} must be 'auto', 'true', or 'false'.")
+
+
+def _resolve_bool(raw_value, arg_name):
+    value = raw_value.strip().lower()
+    if value in ('true', '1', 'yes', 'on'):
+        return True
+    if value in ('false', '0', 'no', 'off'):
+        return False
+    raise RuntimeError(f"{arg_name} must be 'true' or 'false'.")
+
+
 def _launch_setup(context, *args, **kwargs):
     robot_sides = _normalize_robot_sides(
         _parse_robot_side(LaunchConfiguration('robot_side').perform(context))
     )
     use_mujoco           = LaunchConfiguration('use_mujoco').perform(context)
+    use_mujoco_enabled   = use_mujoco.lower() == 'true'
     load_gripper         = LaunchConfiguration('load_gripper').perform(context)
     use_fake_hardware    = LaunchConfiguration('use_fake_hardware').perform(context)
     fake_sensor_commands = LaunchConfiguration('fake_sensor_commands').perform(context)
     namespace            = LaunchConfiguration('namespace').perform(context)
     joy_dev              = LaunchConfiguration('joy_dev')
+    joy_topic            = LaunchConfiguration('joy_topic').perform(context)
+    local_joy_topic      = LaunchConfiguration('local_joy_topic').perform(context)
+    launch_local_joy     = LaunchConfiguration('launch_local_joy').perform(context)
+    pedal                = LaunchConfiguration('pedal').perform(context)
     launch_move_group    = LaunchConfiguration('launch_move_group').perform(context)
     launch_avp_bridge    = LaunchConfiguration('launch_avp_bridge')
     avp_bridge_script    = LaunchConfiguration('avp_bridge_script')
@@ -86,6 +113,9 @@ def _launch_setup(context, *args, **kwargs):
         raise RuntimeError("robot_side entries must be unique.")
 
     is_dual = len(robot_sides) == 2
+    launch_local_joy_enabled = _resolve_auto_bool(
+        launch_local_joy, True, 'launch_local_joy')
+    pedal_enabled = _resolve_bool(pedal, 'pedal')
 
     pkg_desc = get_package_share_directory('fr3_husky_description')
     pkg_ctrl = get_package_share_directory('fr3_husky_controller')
@@ -158,6 +188,16 @@ def _launch_setup(context, *args, **kwargs):
 
     # Node list
     nodes = [
+        LogInfo(
+            msg=(
+                f"[fr3_husky_action_controller.launch] "
+                f"use_mujoco={use_mujoco_enabled}, "
+                f"pedal={pedal_enabled}, "
+                f"launch_local_joy={launch_local_joy_enabled}, "
+                f"joy_topic={joy_topic}, "
+                f"local_joy_topic={local_joy_topic}"
+            ),
+        ),
         Node(
             package='rviz2',
             executable='rviz2',
@@ -198,14 +238,14 @@ def _launch_setup(context, *args, **kwargs):
             package='controller_manager',
             executable='spawner',
             namespace=namespace,
-            arguments=['joint_state_broadcaster', '--controller-manager-timeout', '60'],
-            output='screen',
-        ),
-        Node(
-            package='controller_manager',
-            executable='spawner',
-            namespace=namespace,
-            arguments=[main_controller, '--controller-manager-timeout', '60'],
+            arguments=[
+                'joint_state_broadcaster',
+                main_controller,
+                '--controller-manager-timeout', '60',
+                '--service-call-timeout', '120',
+                '--switch-timeout', '120',
+                '--activate-as-group',
+            ],
             output='screen',
         ),
         # husky teleop/mux: relevant for both real hardware and MuJoCo
@@ -215,24 +255,6 @@ def _launch_setup(context, *args, **kwargs):
             output='screen',
             remappings=[('/cmd_vel_out', f'/{main_controller}/cmd_vel_unstamped')],
             parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'twist_mux.yaml'])],
-        ),
-        # joy_linux without namespace → publishes /joy (required by controller e-stop)
-        Node(
-            package='joy_linux',
-            executable='joy_linux_node',
-            name='joy_node',
-            output='screen',
-            parameters=[{'dev': joy_dev}],
-        ),
-        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_linux node above
-        Node(
-            namespace='joy_teleop',
-            package='teleop_twist_joy',
-            executable='teleop_node',
-            name='teleop_twist_joy_node',
-            output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
-            remappings=[('joy', '/joy')],
         ),
         # husky_control (robot_localization): real hardware only
         IncludeLaunchDescription(
@@ -283,6 +305,35 @@ def _launch_setup(context, *args, **kwargs):
         
     ]
 
+    if pedal_enabled:
+        nodes.append(
+            # External pedal Joy input owns /joy. Local PS4 stays on /estop_joy.
+            Node(
+                namespace='joy_teleop',
+                package='teleop_twist_joy',
+                executable='teleop_node',
+                name='teleop_twist_joy_node',
+                output='screen',
+                parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+                remappings=[('joy', joy_topic)],
+            )
+        )
+
+    if launch_local_joy_enabled:
+        nodes.insert(
+            1,
+            # Start local PS4 e-stop input before controller activation.
+            # It stays off /joy so external pedal Joy messages can own /joy.
+            Node(
+                package='joy_linux',
+                executable='joy_linux_node',
+                name='joy_node',
+                output='screen',
+                parameters=[{'dev': joy_dev}],
+                remappings=[('joy', local_joy_topic)],
+            ),
+        )
+
     # franka_robot_state_broadcaster: real hardware only (skip for fake or mujoco)
     for broadcaster_name in franka_broadcaster_names:
         nodes.append(
@@ -330,7 +381,7 @@ def _launch_setup(context, *args, **kwargs):
             srdf_path    = os.path.join(pkg_desc, 'robots', 'dual_fr3_husky.srdf.xacro')
             urdf_mg_map  = {'ros2_control': 'false', 'with_sc': 'false', 'fix_finger': 'false',
                             'hand': load_gripper, 'virtual_joint': 'false', 'as_two_wheels': 'false'}
-            srdf_map     = {'hand': load_gripper}
+            srdf_map     = {'hand': load_gripper, 'with_sc': 'false', 'as_two_wheels': 'false'}
             cfg_sub      = 'dual'
             ctrl_yaml    = os.path.join('config', 'dual', 'dual_fr3_husky_controllers.yaml')
             jsp_src      = ['dual_fr3_husky/joint_states']
@@ -341,7 +392,7 @@ def _launch_setup(context, *args, **kwargs):
             urdf_mg_map  = {'ros2_control': 'false', 'with_sc': 'false', 'fix_finger': 'false',
                             'side': robot_side, 'hand': load_gripper,
                             'virtual_joint': 'false', 'as_two_wheels': 'false'}
-            srdf_map     = {'side': robot_side, 'hand': load_gripper}
+            srdf_map     = {'side': robot_side, 'hand': load_gripper, 'with_sc': 'false', 'as_two_wheels': 'false'}
             cfg_sub      = robot_side
             ctrl_yaml    = os.path.join('config', robot_side, 'single_fr3_husky_controllers.yaml')
             jsp_src      = [f'{robot_side}_fr3_husky/joint_states']
@@ -409,6 +460,10 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_side',        default_value='left',  description="Robot side: left, right, or dual"),
         DeclareLaunchArgument('namespace',         default_value='',      description='Namespace for the robot'),
         DeclareLaunchArgument('joy_dev',           default_value='/dev/input/js0', description='Joystick device for joy_linux'),
+        DeclareLaunchArgument('joy_topic',         default_value='/joy', description='Joy topic consumed for external Husky teleop input'),
+        DeclareLaunchArgument('local_joy_topic',   default_value='/estop_joy', description='Topic published by local joy_linux, typically PS4 R1 e-stop input'),
+        DeclareLaunchArgument('launch_local_joy',  default_value='true',  description="Launch local joy_linux for PS4 e-stop input: auto, true, or false. auto resolves to true."),
+        DeclareLaunchArgument('pedal',             default_value='false', description='Use external pedal Joy input on joy_topic for Husky teleop'),
         DeclareLaunchArgument('load_gripper',      default_value='true',  description='Load gripper (true/false)'),
         DeclareLaunchArgument('use_mujoco',        default_value='false', description='Use MuJoCo hardware interface'),
         DeclareLaunchArgument('use_fake_hardware', default_value='false', description='Use fake hardware'),

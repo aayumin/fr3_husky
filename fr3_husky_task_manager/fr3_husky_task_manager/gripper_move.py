@@ -58,7 +58,8 @@ class GripperMoveClient(Node):
         arms = ['left', 'right'] if arm_names == 'both' else [arm_names]
         
         for arm in arms:
-            action_name = f'/fr3_husky_gripper_command'
+            # action_name = f'/fr3_husky_gripper_command'
+            action_name = f'/fr3_gripper_command'
             client = ActionClient(self, GripperCommand, action_name)
             goal = GripperCommand.Goal()
             goal.arm_names = arm

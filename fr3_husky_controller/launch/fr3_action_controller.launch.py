@@ -5,7 +5,7 @@ import xacro
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown, ExecuteProcess
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
@@ -67,6 +67,11 @@ def _launch_setup(context, *args, **kwargs):
     namespace            = LaunchConfiguration('namespace').perform(context)
     launch_rviz          = LaunchConfiguration('launch_rviz').perform(context)
     launch_move_group    = LaunchConfiguration('launch_move_group').perform(context)
+    launch_avp_bridge    = LaunchConfiguration('launch_avp_bridge')
+    avp_bridge_script    = LaunchConfiguration('avp_bridge_script')
+    avp_udp_ip           = LaunchConfiguration('avp_udp_ip')
+    avp_udp_port         = LaunchConfiguration('avp_udp_port')
+    avp_frame_id         = LaunchConfiguration('avp_frame_id')
 
     if not robot_sides:
         raise RuntimeError("robot_side must be 'left', 'right', or 'dual'.")
@@ -197,6 +202,20 @@ def _launch_setup(context, *args, **kwargs):
             namespace=namespace,
             arguments=[main_controller, '--controller-manager-timeout', '60'],
             output='screen',
+        ),
+        
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                avp_bridge_script,
+                '--ros-args',
+                '-p', ['udp_ip:=', avp_udp_ip],
+                '-p', ['udp_port:=', avp_udp_port],
+                '-p', ['frame_id:=', avp_frame_id],
+            ],
+            name='mac2linux_avp_bridge',
+            output='screen',
+            condition=IfCondition(launch_avp_bridge),
         ),
     ]
 
@@ -330,5 +349,16 @@ def generate_launch_description():
         DeclareLaunchArgument('fake_sensor_commands', default_value='false', description='Fake sensor commands'),
         DeclareLaunchArgument('launch_rviz',         default_value='true',  description='Launch RViz'),
         DeclareLaunchArgument('launch_move_group',   default_value='true', description='Launch move_group (needed for fr3_move_to_joint)'),
+        DeclareLaunchArgument('launch_avp_bridge', default_value='true', description='Launch AVP UDP-to-ROS bridge'),
+        DeclareLaunchArgument(
+            'avp_bridge_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'handtracking_avp.py']),
+            description='Path to AVP UDP-to-ROS bridge script',
+        ),
+        DeclareLaunchArgument('avp_udp_ip',        default_value='0.0.0.0', description='UDP bind IP for AVP bridge'),
+        DeclareLaunchArgument('avp_udp_port',      default_value='5005', description='UDP bind port for AVP bridge'),
+        DeclareLaunchArgument('avp_frame_id',      default_value='avp_world', description='Frame id used in tracker_pose header'),
+        DeclareLaunchArgument('launch_avp_image_bridge', default_value='true', description='Launch MuJoCo camera image UDP sender for AVP'),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='6.0', description='Maximum per-stream WebRTC image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])

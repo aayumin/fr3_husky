@@ -13,10 +13,15 @@ from fr3_husky_msgs.action import MoveToJoint
 class MoveToJointClient(Node):
     # DEFAULT_LEFT_TARGET_POSITIONS = [0.25, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
     # DEFAULT_RIGHT_TARGET_POSITIONS = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
-    DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
-    DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
 
-    LEFT_CAMERA_POSITIONS = [-0.45, -0.85, 0.3, -2.25, -0.2, 1.42, 2.15]
+    DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.5236, 0.0, -2.0944, 0.0, 1.5708, 0.7854]
+    DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.5236, 0.0, -2.0944, 0.0, 1.5708, 0.7854]
+
+
+
+    # LEFT_CAMERA_POSITIONS = [-0.45, -0.85, 0.3, -2.25, -0.2, 1.42, 2.15]
     # LEFT_CAMERA_POSITIONS = [-0.95, -0.25, 0.1, -1.35, -0.2, 1.15, 2.0]  ## for coffee scene
     
 
@@ -31,6 +36,7 @@ class MoveToJointClient(Node):
         super().__init__('move_to_joint_client')
 
         self._action_name = '/fr3_husky_move_to_joint'
+        # self._action_name = '/fr3_move_to_joint'
         self._client = ActionClient(self, MoveToJoint, self._action_name)
 
         self._goal_handle = None
@@ -45,7 +51,9 @@ class MoveToJointClient(Node):
             'left_target_positions',
             left_target_positions
             if left_target_positions is not None
-            else self.LEFT_CAMERA_POSITIONS,
+            # else self.LEFT_CAMERA_POSITIONS,
+            else self.DEFAULT_LEFT_TARGET_POSITIONS,
+            
         )
         self.declare_parameter(
             'right_target_positions',

@@ -10,11 +10,6 @@
 
 namespace fr3_husky_controller
 {
-namespace
-{
-    constexpr const char* kJoyTopic = "/joy";
-}  // namespace
-
 controller_interface::InterfaceConfiguration FR3HuskyActionController::state_interface_configuration() const
 {
     controller_interface::InterfaceConfiguration conf;
@@ -169,6 +164,11 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
         LOGE(get_node(), "estop_button_index must be non-negative, got %ld", static_cast<long>(params_.estop_button_index));
         return CallbackReturn::FAILURE;
     }
+    if (params_.use_estop && params_.estop_joy_topic.empty())
+    {
+        LOGE(get_node(), "estop_joy_topic must not be empty when use_estop=true.");
+        return CallbackReturn::FAILURE;
+    }
 
 
     // command flags (exactly one will be true)
@@ -216,14 +216,22 @@ CallbackReturn FR3HuskyActionController::on_configure(const rclcpp_lifecycle::St
 
     publish_rate_ = params_.publish_rate;
 
+    LOGI(get_node(), "Controller parameters: use_estop=%s, estop_joy_topic=%s, estop_button_index=%ld",
+         params_.use_estop ? "true" : "false",
+         params_.estop_joy_topic.c_str(),
+         static_cast<long>(params_.estop_button_index));
 
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
     estop_button_pressed_.store(false, std::memory_order_release);
     estop_is_active_ = false;
     estop_button_index_warned_ = false;
-    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
-        kJoyTopic, rclcpp::SystemDefaultsQoS(),
-        std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
+    estop_joy_subscriber_.reset();
+    if (params_.use_estop)
+    {
+        estop_joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+            params_.estop_joy_topic, rclcpp::SensorDataQoS(),
+            std::bind(&FR3HuskyActionController::onEstopJoyMessage, this, std::placeholders::_1));
+    }
 
     
 
@@ -257,7 +265,7 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
 
     /// When using MuJoCo, do not use franka sementic segment
     use_franka_model_ = (tmp_urdf_xml.find("mujoco_ros_hardware/MujocoHardwareInterface") == std::string::npos);
-    LOGW(get_node(), "Franka model: %s", use_franka_model_ ? "available" : "unavailable (pinocchio fallback)");
+    LOGI(get_node(), "Franka model: %s", use_franka_model_ ? "available" : "unavailable (pinocchio fallback)");
 
     // Initialize Franka semantic components (only if HW exports robot_model)
     franka_robot_model_.clear();
@@ -373,6 +381,12 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     model_updater_->setInterfaceFlags(has_position_state_interface_, has_velocity_state_interface_, has_effort_state_interface_,
                                       has_position_command_interface_, has_velocity_command_interface_, has_effort_command_interface_);
     model_updater_->initialize(num_robots_, manipulator_dof_, dt_, params_.robot_name, ee_names_);
+    if (auto* fr3_husky_model_updater = dynamic_cast<FR3HuskyModelUpdater*>(model_updater_.get()))
+    {
+        fr3_husky_model_updater->setSubtractGravityFromEffortCommand(use_franka_model_);
+        LOGI(get_node(), "Effort hold command subtracts gravity: %s",
+             use_franka_model_ ? "true" : "false");
+    }
     model_updater_->setDRCRobotData(std::move(robot_data));
     model_updater_->setDRCRobotController(std::move(robot_controller));
 
@@ -543,15 +557,11 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
 
 
 
-    const bool joy_connected = isJoyConnected();
+    const bool joy_connected = isEstopJoyConnected();
     if (params_.use_estop && !joy_connected)
     {
-        LOGE(get_node(), "use_estop=true but joystick is not connected on topic '%s'.", kJoyTopic);
+        LOGE(get_node(), "use_estop=true but e-stop joystick is not connected on topic '%s'.", params_.estop_joy_topic.c_str());
         return CallbackReturn::ERROR;
-    }
-    if (!params_.use_estop && !joy_connected)
-    {
-        LOGW(get_node(), "Joystick is not connected on topic '%s'. e-stop is disabled and controller continues.", kJoyTopic);
     }
 
 
@@ -629,6 +639,10 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     model_updater_->updateJointStates();
     model_updater_->updateRobotData();
     model_updater_->setInitFromCurrent();
+    if (model_updater_->q_total_init_.size() == static_cast<Eigen::Index>(model_updater_->manipulator_dof_))
+    {
+        model_updater_->writeHoldCommand(model_updater_->q_total_init_, Eigen::Vector2d::Zero());
+    }
 
     is_halted_ = false;
 
@@ -659,7 +673,7 @@ CallbackReturn FR3HuskyActionController::on_deactivate(const rclcpp_lifecycle::S
     odom_timer_.reset();
     estop_is_active_ = false;
     estop_button_pressed_.store(false, std::memory_order_release);
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
 
     return CallbackReturn::SUCCESS;
 }
@@ -684,9 +698,9 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         return controller_interface::return_type::OK;
     }
 
-    if (params_.use_estop && !isJoyConnected())
+    if (params_.use_estop && !isEstopJoyConnected())
     {
-        LOGE(get_node(), "Joystick disconnected while e-stop is enabled.");
+        LOGE(get_node(), "E-stop joystick disconnected while e-stop is enabled on topic '%s'.", params_.estop_joy_topic.c_str());
         return controller_interface::return_type::ERROR;
     }
 
@@ -817,7 +831,7 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
 
     const bool estop_pressed =
         params_.use_estop &&
-        joy_msg_received_.load(std::memory_order_acquire) &&
+        estop_joy_msg_received_.load(std::memory_order_acquire) &&
         estop_button_pressed_.load(std::memory_order_acquire);
 
     if (estop_pressed && !estop_is_active_)
@@ -1099,11 +1113,17 @@ void FR3HuskyActionController::publishFromMobileStateBuffer()
     }
 }
 
-void FR3HuskyActionController::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
+void FR3HuskyActionController::onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
 {
-    joy_msg_received_.store(true, std::memory_order_release);
+    estop_joy_msg_received_.store(true, std::memory_order_release);
 
     if (!msg)
+    {
+        estop_button_pressed_.store(false, std::memory_order_release);
+        return;
+    }
+
+    if (!params_.use_estop)
     {
         estop_button_pressed_.store(false, std::memory_order_release);
         return;
@@ -1126,9 +1146,9 @@ void FR3HuskyActionController::onJoyMessage(const sensor_msgs::msg::Joy::SharedP
     estop_button_pressed_.store(msg->buttons[static_cast<size_t>(button_index)] != 0, std::memory_order_release);
 }
 
-bool FR3HuskyActionController::isJoyConnected() const
+bool FR3HuskyActionController::isEstopJoyConnected() const
 {
-    return joy_subscriber_ && joy_subscriber_->get_publisher_count() > 0;
+    return estop_joy_subscriber_ && estop_joy_subscriber_->get_publisher_count() > 0;
 }
 
 bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller)

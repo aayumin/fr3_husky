@@ -120,8 +120,6 @@ add_library(${PROJECT_NAME} SHARED
     src/servers/fr3/omega_haptic_action_server.cpp
     src/servers/fr3_husky/omega_haptic_action_server.cpp
     
-    src/test_fr3_controller.cpp
-    src/test_fr3_husky_controller.cpp
     src/servers/fr3/joint_trajectory_controller_action_server.cpp
     src/servers/fr3/move_to_joint_action_server.cpp
     src/servers/fr3_husky/joint_trajectory_controller_action_server.cpp
@@ -135,6 +133,12 @@ add_library(${PROJECT_NAME} SHARED
     src/servers/fr3_husky/husky_pedal_action_server.cpp
     src/servers/fr3_husky/apple_vision_pro_action_server.cpp
     src/servers/fr3_husky/keyboard_move_action_server.cpp
+
+    src/servers/fr3/task_space_move_action_server.cpp
+    src/servers/fr3/task_space_delta_move_action_server.cpp
+    src/servers/fr3/gripper_command_action_server.cpp
+    src/servers/fr3/apple_vision_pro_action_server.cpp
+    src/servers/fr3/keyboard_move_action_server.cpp
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

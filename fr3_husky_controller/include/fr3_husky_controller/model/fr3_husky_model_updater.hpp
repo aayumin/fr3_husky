@@ -38,6 +38,7 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
                         const std::vector<std::string>& ee_names) override;
         void setDRCRobotData(const std::shared_ptr<drc::MobileManipulator::RobotData>&& robot_data);
         void setDRCRobotController(const std::shared_ptr<drc::MobileManipulator::RobotController>&& robot_controller) { robot_controller_ = std::move(robot_controller); }
+        void setSubtractGravityFromEffortCommand(bool enabled) { subtract_gravity_from_effort_command_ = enabled; }
         void updateJointStates() override;
         void updateRobotData() override;
         void haltCommands() override;
@@ -45,6 +46,8 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         void setInitFromCurrent();
         void writeCommand(const Eigen::VectorXd& command_mani,
                         const Eigen::Vector2d& command_mobi);
+        void writeHoldCommand(const Eigen::VectorXd& q_hold,
+                              const Eigen::Vector2d& command_mobi);
         void forceStopMobile();
         bool GripperMove(const std::string robot_name, double width, double speed);
         bool GripperOpen(const std::string robot_name, double speed = 0.1)  { return GripperMove(robot_name, 0.08, speed); }
@@ -53,6 +56,7 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         bool GripperGrasp(const std::string robot_name, double width = 0.0, double speed = 0.1, double force = 30.0, std::pair<double, double> epsilon = {0.08, 0.08});
     
     public:
+        bool subtract_gravity_from_effort_command_{true};
         std::shared_ptr<drc::MobileManipulator::RobotData> robot_data_;
         std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller_;
 
@@ -150,6 +154,11 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr xdot_m_l_pub_, xdot_m_r_pub_;
         rclcpp::TimerBase::SharedPtr debug_publish_timer_;
         void publishDebugState();
+
+    private:
+        void writeCommandImpl(const Eigen::VectorXd& command_mani,
+                              const Eigen::Vector2d& command_mobi,
+                              bool reset_halt);
 };
 
 }  // namespace fr3_husky_controller

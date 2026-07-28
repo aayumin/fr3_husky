@@ -14,15 +14,19 @@ from fr3_husky_msgs.action import TaskSpaceDeltaMove
 
 class TaskSpaceDeltaMoveClient(Node):
     DEFAULT_LEFT_DELTA_POSE = {
-        "position": [0.05, 0.0, 0.0],
-        "rpy": [0.0, 0.0, 0.52],
+        # "position": [0.05, 0.0, 0.0],
+        # "rpy": [0.0, 0.0, 0.52],
+        "position": [0.0, 0.0, 0.0],
+        "rpy": [0.0, 0.0, 0.0],
     }
 
     
 
     DEFAULT_RIGHT_DELTA_POSE = {
-        "position": [0.05, 0.0, 0.0],
-        "rpy": [0.0, 0.0, -0.52],
+        # "position": [0.05, 0.0, 0.0],
+        # "rpy": [0.0, 0.0, -0.52],
+        "position": [0.0, 0.0, 0.0],
+        "rpy": [0.0, 0.0, 0.0],
     }
 
     def __init__(
@@ -38,7 +42,8 @@ class TaskSpaceDeltaMoveClient(Node):
     ):
         super().__init__("task_space_delta_move_client")
 
-        self._action_name = "/fr3_husky_task_space_delta_move"
+        # self._action_name = "/fr3_husky_task_space_delta_move"
+        self._action_name = "/fr3_task_space_delta_move"
         self._client = ActionClient(self, TaskSpaceDeltaMove, self._action_name)
 
         self._goal_handle = None

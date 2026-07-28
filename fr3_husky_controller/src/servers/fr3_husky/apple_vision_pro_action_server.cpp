@@ -543,7 +543,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
 
                     // Deadband
-                    const double POS_EPS = 0.015;
+                    const double POS_EPS = 0.005;
                     for (int k = 0; k < 3; ++k)
                     {
                         if (std::abs(delta_avp(k)) < POS_EPS)
@@ -692,7 +692,7 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     Eigen::Vector3d delta_avp = hand_cur_rel_head - hand_init_rel_head;
 
                     // Deadband
-                    const double POS_EPS = 0.015;
+                    const double POS_EPS = 0.005;
                     for (int k = 0; k < 3; ++k)
                     {
                         if (std::abs(delta_avp(k)) < POS_EPS)
@@ -764,18 +764,6 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     }
                     // target_pose_diff.linear().setIdentity();
 
-                    
-
-                    // for debugging // remove
-                    if (dbg_cnt % 250 == 0)
-                    {
-                        std::cout << "target_pose_diff.translation() = " << target_pose_diff.translation().transpose() << std::endl;
-                        std::cout << "target_pose_diff.linear() = \n" << target_pose_diff.linear() << std::endl;
-                        std::cout << "================================" << std::endl;
-                    }
-
-
-
                     Eigen::Affine3d raw_target = Eigen::Affine3d::Identity();
                     raw_target.linear() = target_pose_diff.linear() * ee_data_[right_controller_ee_name_].x_init.linear();
                     raw_target.translation() = target_pose_diff.translation() + ee_data_[right_controller_ee_name_].x_init.translation();
@@ -840,8 +828,8 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                 Eigen::VectorXd q_mani_cur = fr3_husky_model_updater_.q_total_.segment(act_idx_check.mani_start, mani_dof);
 
                 // 안전 마진 및 회피 게인 설정
-                static constexpr double k_avoid = 2.0;       
-                static constexpr double margin_rad = 0.087;  
+                static constexpr double k_avoid = 5.0;       
+                static constexpr double margin_rad = 0.157;  
                 static constexpr double max_null_qdot = 0.05;
 
 
@@ -1231,14 +1219,14 @@ Eigen::Affine3d AppleVisionPro::smoothAndLimit(const Eigen::Affine3d& prev, cons
 
 
 // Register this server into global registry (executed when this TU is linked)
-// REGISTER_FR3_ACTION_SERVER(AppleVisionPro, "fr3_AVP_tracker")
-REGISTER_FR3_HUSKY_ACTION_SERVER(AppleVisionPro, "fr3_AVP_tracker")
+// REGISTER_FR3_ACTION_SERVER(AppleVisionPro, "fr3_husky_AVP_tracker")
+REGISTER_FR3_HUSKY_ACTION_SERVER(AppleVisionPro, "fr3_husky_AVP_tracker")
 
 
 }  // namespace fr3_husky_controller::servers::fr3
 /*
 # send goal 
-ros2 action send_goal /fr3_AVP_tracker fr3_husky_msgs/action/AppleVisionPro \
+ros2 action send_goal /fr3_husky_AVP_tracker fr3_husky_msgs/action/AppleVisionPro \
 "{mode: 1, left_controller_ee_name: 'left_fr3_hand_tcp', right_controller_ee_name: 'right_fr3_hand_tcp', move_orientation: false, controller_pos_multiplier: 1.0, controller_ori_multiplier: 1.0}" \
 --feedback
 */

@@ -126,8 +126,8 @@ namespace ConsoleColor
 #define LOGE(node, fmt, ...) RCLCPP_ERROR((node)->get_logger(), (std::string(ConsoleColor::RED)    + fmt + ConsoleColor::RESET).c_str(), ##__VA_ARGS__)
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
-using fr3_controller::ParamListener;
-using fr3_controller::Params;
+using fr3_husky_controller::ParamListener;
+using fr3_husky_controller::Params;
 
 namespace fr3_husky_controller
 {{

@@ -121,8 +121,8 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         // ====================== Main Controller Functions =======================
         // ========================================================================
         bool setJointIndex(const std::string& urdf_xml, drc::MobileManipulator::JointIndex& out_idx);
-        void onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
-        bool isJoyConnected() const;
+        void onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
+        bool isEstopJoyConnected() const;
 
         // ========================================================================
         // ===================== Franka & Husky robot Data ========================
@@ -210,8 +210,8 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         // ========================================================================
         // =============================== E-Stop =================================
         // ========================================================================
-        rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_subscriber_ = nullptr;
-        std::atomic<bool> joy_msg_received_{false};
+        rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr estop_joy_subscriber_ = nullptr;
+        std::atomic<bool> estop_joy_msg_received_{false};
         std::atomic<bool> estop_button_pressed_{false};
         bool estop_is_active_{false};
         bool estop_button_index_warned_{false};

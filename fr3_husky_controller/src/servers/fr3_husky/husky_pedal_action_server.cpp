@@ -41,7 +41,7 @@ HuskyPedal::HuskyPedal(const std::string& name, const NodePtr& node, ModelUpdate
     deadzone_pedal_ = node_->declare_parameter<double>(name_ + ".deadzone_pedal", 0.05);
     deadzone_yaw_mag_ = node_->declare_parameter<double>(name_ + ".deadzone_yaw_mag", 0.05);
     enable_button_ = static_cast<int>(node_->declare_parameter<int>(name_ + ".enable_button", -1));
-    pedal_topic_ = node_->declare_parameter<std::string>(name_ + ".pedal_topic", "joy");
+    pedal_topic_ = node_->declare_parameter<std::string>(name_ + ".pedal_topic", "/joy");
 
     RCLCPP_INFO(node_->get_logger(), "[%s] HuskyPedal created (topic: %s)", name_.c_str(), pedal_topic_.c_str());
 }
@@ -54,14 +54,15 @@ bool HuskyPedal::acceptGoal(const ActionT::Goal& goal)
 
 void HuskyPedal::onGoalAccepted(const ActionT::Goal& goal)
 {
+    const bool latch_hold = goal.enable && !enabled_;
     enabled_ = goal.enable;
     goal_update_pending_ = true;
-    applyEnabledState();
+    applyEnabledState(latch_hold);
 }
 
 void HuskyPedal::onStart()
 {
-    applyEnabledState();
+    applyEnabledState(enabled_);
 }
 
 HuskyPedal::ComputeResult HuskyPedal::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
@@ -88,26 +89,7 @@ HuskyPedal::ComputeResult HuskyPedal::compute(const rclcpp::Time& /*time*/, cons
     fr3_husky_model_updater_.wheel_vel_desired_ =
         fr3_husky_model_updater_.robot_controller_->MobileVelocityCommand(cmd_vel);
 
-    if (model_updater_.HasPositionCommandInterface())
-    {
-        fr3_husky_model_updater_.q_desired_total_ = q_hold_;
-        fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.q_desired_total_,
-                                              fr3_husky_model_updater_.wheel_vel_desired_);
-        return ComputeResult::RUNNING;
-    }
-    if (model_updater_.HasVelocityCommandInterface())
-    {
-        fr3_husky_model_updater_.qdot_desired_total_.setZero();
-        fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.qdot_desired_total_,
-                                              fr3_husky_model_updater_.wheel_vel_desired_);
-        return ComputeResult::RUNNING;
-    }
-
-    fr3_husky_model_updater_.torque_desired_total_ =
-        fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(
-            q_hold_, Eigen::VectorXd::Zero(model_updater_.manipulator_dof_), false);
-    fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_,
-                                          fr3_husky_model_updater_.wheel_vel_desired_);
+    fr3_husky_model_updater_.writeHoldCommand(q_hold_, fr3_husky_model_updater_.wheel_vel_desired_);
     return ComputeResult::RUNNING;
 }
 
@@ -157,20 +139,26 @@ void HuskyPedal::subPedalCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
     cmd_vel_ = cmd_vel;
 }
 
-void HuskyPedal::applyEnabledState()
+void HuskyPedal::applyEnabledState(bool latch_hold)
 {
     if (enabled_)
     {
-        resetCommand();
-        q_hold_ = fr3_husky_model_updater_.q_total_;
-        warned_axes_ = false;
-        warned_buttons_ = false;
+        if (latch_hold)
+        {
+            resetCommand();
+            q_hold_ = fr3_husky_model_updater_.q_total_;
+            warned_axes_ = false;
+            warned_buttons_ = false;
+        }
         if (!pedal_sub_)
         {
             pedal_sub_ = node_->create_subscription<sensor_msgs::msg::Joy>(
-                pedal_topic_, 10, std::bind(&HuskyPedal::subPedalCallback, this, std::placeholders::_1));
+                pedal_topic_, rclcpp::SensorDataQoS(),
+                std::bind(&HuskyPedal::subPedalCallback, this, std::placeholders::_1));
         }
-        RCLCPP_INFO(node_->get_logger(), "[%s] started pedal control", name_.c_str());
+        RCLCPP_INFO(node_->get_logger(), "[%s] %s pedal control",
+                    name_.c_str(),
+                    latch_hold ? "started" : "kept");
         return;
     }
 

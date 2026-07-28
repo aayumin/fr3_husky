@@ -433,7 +433,64 @@ void FR3HuskyModelUpdater::setInitFromCurrent()
     xdot_w_init_ = xdot_w_;
 }
 
-void FR3HuskyModelUpdater:: writeCommand(const Eigen::VectorXd& command_mani, const Eigen::Vector2d& command_mobi)
+void FR3HuskyModelUpdater::writeCommand(const Eigen::VectorXd& command_mani, const Eigen::Vector2d& command_mobi)
+{
+    writeCommandImpl(command_mani, command_mobi, true);
+}
+
+void FR3HuskyModelUpdater::writeHoldCommand(const Eigen::VectorXd& q_hold, const Eigen::Vector2d& command_mobi)
+{
+    if (!is_configured_ || !getHandlesReady())
+    {
+        return;
+    }
+
+    if (static_cast<size_t>(q_hold.size()) != manipulator_dof_)
+    {
+        if (node_) RCLCPP_WARN(node_->get_logger(),
+                               "Hold cmd size mismatch (expected %zu, got %zu). Holding/zeroing.",
+                               manipulator_dof_, static_cast<size_t>(q_hold.size()));
+        haltCommands();
+        return;
+    }
+
+    if (has_position_command_interface_)
+    {
+        writeCommandImpl(q_hold, command_mobi, false);
+        return;
+    }
+
+    if (has_velocity_command_interface_)
+    {
+        qdot_desired_total_.setZero();
+        writeCommandImpl(qdot_desired_total_, command_mobi, false);
+        return;
+    }
+
+    if (!robot_controller_)
+    {
+        if (node_) RCLCPP_WARN(node_->get_logger(), "Robot controller is unavailable; falling back to haltCommands().");
+        haltCommands();
+        return;
+    }
+
+    torque_desired_total_ =
+        robot_controller_->moveManipulatorJointTorqueStep(
+            q_hold, Eigen::VectorXd::Zero(manipulator_dof_), false);
+
+    Eigen::VectorXd command = torque_desired_total_;
+    if (subtract_gravity_from_effort_command_ &&
+        g_total_.size() == static_cast<Eigen::Index>(manipulator_dof_))
+    {
+        command -= g_total_;
+    }
+
+    writeCommandImpl(command, command_mobi, false);
+}
+
+void FR3HuskyModelUpdater::writeCommandImpl(const Eigen::VectorXd& command_mani,
+                                            const Eigen::Vector2d& command_mobi,
+                                            bool reset_halt)
 {
     if (!is_configured_ || !getHandlesReady())
     {
@@ -464,7 +521,10 @@ void FR3HuskyModelUpdater:: writeCommand(const Eigen::VectorXd& command_mani, co
 
     if (static_cast<size_t>(command_mani.size()) == manipulator_dof_)
     {
-        halt_initialized_ = false;  // leave halt mode; next halt will re-capture pose
+        if (reset_halt)
+        {
+            halt_initialized_ = false;  // leave halt mode; next halt will re-capture pose
+        }
 
         // for FR3
         for (size_t i = 0; i < robot_handle_.mani_joints.size(); ++i)
@@ -568,39 +628,33 @@ void FR3HuskyModelUpdater::haltCommands()
     }
     else
     {
-        const Eigen::Vector<double, FR3_DOF> kp{600.0, 600.0, 600.0, 600.0, 250.0, 150.0, 50.0};
-        const Eigen::Vector<double, FR3_DOF> kv{30.0,   30.0,  30.0,  30.0,  10.0,  10.0,  5.0};
-
+        Eigen::VectorXd q_hold = q_total_;
+        if (q_hold.size() != static_cast<Eigen::Index>(manipulator_dof_))
+        {
+            q_hold.setZero(manipulator_dof_);
+        }
         for (size_t i = 0; i < robot_handle_.mani_joints.size(); ++i)
         {
             auto it = halt_position_.find(robot_handle_.mani_joints[i].command.get().get_name());
             if (it != halt_position_.end())
             {
-                const std::string jname = it->first;
-                const double q_halted = it->second;
-                
-                int arm_idx = -1;
-                for (int joint_idx = 1; joint_idx <= FR3_DOF; ++joint_idx)
+                Eigen::Index cmd_idx = static_cast<Eigen::Index>(i);
+                const int joint_idx = jointNameToIndex(robot_handle_.mani_joints[i].command.get().get_name());
+                if (joint_idx >= 0)
                 {
-                    if (jname.find(std::to_string(joint_idx)) != std::string::npos)
-                    {
-                        arm_idx = joint_idx - 1;  // 0-based index
-                    }
+                    const Eigen::Index arm_block = (num_robots_ > 1)
+                        ? static_cast<Eigen::Index>(i / FR3_DOF)
+                        : 0;
+                    cmd_idx = arm_block * static_cast<Eigen::Index>(FR3_DOF) + static_cast<Eigen::Index>(joint_idx);
                 }
-                if(arm_idx < 0)
+                if (cmd_idx >= 0 && cmd_idx < q_hold.size())
                 {
-                    RCLCPP_WARN(node_->get_logger(), "Joint named [%s] exceed %s joint index [0 to %zu]. Halt command for [%s] set as 0!",
-                                jname.c_str(), arm_id_.c_str(), static_cast<size_t>(FR3_DOF - 1), jname.c_str());
-                    robot_handle_.mani_joints[i].command.get().set_value(0.0);
-                    continue;
+                    q_hold(cmd_idx) = it->second;
                 }
-
-                const double q_curr = robot_handle_.mani_joints[i].state[kPositionIndex].get().get_value();
-                const double qdot_curr = (has_velocity_state_interface_) ? robot_handle_.mani_joints[i].state[kVelocityIndex].get().get_value() : 0.0;
-
-                robot_handle_.mani_joints[i].command.get().set_value(kp[arm_idx] * (q_halted - q_curr) - kv[arm_idx] * (qdot_curr));
             }
         }
+        writeHoldCommand(q_hold, Eigen::Vector2d::Zero());
+        return;
     }
 
     for (auto & h : robot_handle_.left_wheels)  h.command.get().set_value(0.0);

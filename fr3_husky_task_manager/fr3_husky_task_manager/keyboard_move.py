@@ -16,7 +16,8 @@ class KeyboardMoveClient(Node):
     def __init__(self, disable=False):
         super().__init__('keyboard_move_client')
 
-        self._action_name = '/fr3_husky_keyboard_move'
+        # self._action_name = '/fr3_husky_keyboard_move'
+        self._action_name = '/fr3_keyboard_move'
         self._cancel_service_name = f'{self._action_name}/_action/cancel_goal'
         self._client = ActionClient(self, KeyboardMove, self._action_name)
         self._cancel_client = self.create_client(CancelGoal, self._cancel_service_name)
@@ -36,8 +37,10 @@ class KeyboardMoveClient(Node):
         goal.mode = 0
         goal.left_controller_ee_name = 'left_fr3_hand_tcp'
         goal.right_controller_ee_name = 'right_fr3_hand_tcp'
-        goal.controller_pos_multiplier = 1.0
-        goal.controller_ori_multiplier = 1.0
+        # goal.controller_pos_multiplier = 0.08  # peg-in-hole
+        # goal.controller_ori_multiplier = 0.08  # peg-in-hole
+        goal.controller_pos_multiplier = 0.15  # fabric
+        goal.controller_ori_multiplier = 0.15  # fabric
         
 
         self.get_logger().info('Sending KeyboardMove goal')

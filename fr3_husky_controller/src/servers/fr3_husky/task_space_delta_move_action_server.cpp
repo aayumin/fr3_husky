@@ -215,7 +215,16 @@ TaskSpaceDeltaMove::ComputeResult TaskSpaceDeltaMove::compute(
         // const Eigen::Affine3d& T1 = T0 * target_poses_[i];
         const Eigen::Affine3d& T0 = start_poses_.at(i);
         const Eigen::Affine3d& T_delta = target_delta_poses_.at(i);
-        const Eigen::Affine3d T1 = T0 * T_delta;
+
+        // local 좌표계 기준
+        // const Eigen::Affine3d T1 = T0 * T_delta;
+
+        // Translation: global 좌표계 기준, Rotation: local 좌표계 기준
+        Eigen::Affine3d T1 = T0;
+        T1.translation() = T0.translation() + T_delta.translation(); 
+        T1.linear() = T0.linear() * T_delta.linear();
+
+
 
         Eigen::Affine3d T_des = Eigen::Affine3d::Identity();
 

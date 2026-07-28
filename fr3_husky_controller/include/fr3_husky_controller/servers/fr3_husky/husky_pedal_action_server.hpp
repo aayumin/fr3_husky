@@ -40,7 +40,7 @@ private:
 
     void subPedalCallback(const sensor_msgs::msg::Joy::SharedPtr msg);
     Eigen::Vector3d computeBaseVelocityFromPedal(const sensor_msgs::msg::Joy& msg);
-    void applyEnabledState();
+    void applyEnabledState(bool latch_hold);
     void resetCommand();
 
     FR3HuskyModelUpdater& fr3_husky_model_updater_;

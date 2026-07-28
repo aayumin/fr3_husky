@@ -87,6 +87,7 @@
       publish_rate: 50.0
       
       use_estop: true
+      estop_joy_topic: /estop_joy
       estop_button_index: 5
 
       linear.x.max_velocity: 1.0
@@ -164,6 +165,7 @@
       publish_rate: 50.0
 
       use_estop: true
+      estop_joy_topic: /estop_joy
       estop_button_index: 5
 
       linear.x.max_velocity: 1.0
@@ -248,6 +250,7 @@
       publish_rate: 50.0
 
       use_estop: true  
+      estop_joy_topic: /estop_joy
       estop_button_index: 5
 
       linear.x.max_velocity: 1.0
@@ -330,6 +333,7 @@
       publish_rate: 50.0
 
       use_estop: true
+      estop_joy_topic: /estop_joy
       estop_button_index: 5
 
       linear.x.max_velocity: 1.0
@@ -376,6 +380,7 @@
       publish_rate: 50.0
 
       use_estop: true
+      estop_joy_topic: /estop_joy
       estop_button_index: 5
 
       linear.x.max_velocity: 1.0
@@ -429,6 +434,7 @@
       publish_rate: 50.0
 
       use_estop: true
+      estop_joy_topic: /estop_joy
       estop_button_index: 5
 
       linear.x.max_velocity: 1.0

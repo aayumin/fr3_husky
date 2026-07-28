@@ -38,7 +38,8 @@ class TaskSpaceMoveClient(Node):
     ):
         super().__init__("task_space_move_client")
 
-        self._action_name = "/fr3_husky_task_space_move"
+        # self._action_name = "/fr3_husky_task_space_move"
+        self._action_name = "/fr3_task_space_move"
         self._client = ActionClient(self, TaskSpaceMove, self._action_name)
 
         self._goal_handle = None

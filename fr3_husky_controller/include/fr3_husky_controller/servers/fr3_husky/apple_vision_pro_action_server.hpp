@@ -136,7 +136,7 @@ private:
 
     // check lost live
     int lost_live_steps_ = 0;
-    int max_lost_live_steps_ = 30;
+    int max_lost_live_steps_ = 70;
     bool isPoseWindowLive(const std::deque<Eigen::Affine3d>& poses);
     void resetRealtimeTracking();
 

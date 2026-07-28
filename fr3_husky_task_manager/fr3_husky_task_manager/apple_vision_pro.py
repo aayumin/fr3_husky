@@ -13,15 +13,18 @@ from fr3_husky_msgs.action import AppleVisionPro
 
 
 class AppleVisionProClient(Node):
-    def __init__(self, disable=False, yaw_only=False):
+    def __init__(self, disable=False, yaw_only=False, left_off=False, right_off=False):
         super().__init__('apple_vision_pro_client')
 
-        self._action_name = '/fr3_AVP_tracker'
+        self._action_name = '/fr3_husky_AVP_tracker'
+        # self._action_name = '/fr3_AVP_tracker'
         self._cancel_service_name = f'{self._action_name}/_action/cancel_goal'
         self._client = ActionClient(self, AppleVisionPro, self._action_name)
         self._cancel_client = self.create_client(CancelGoal, self._cancel_service_name)
         self._disable = disable
         self._yaw_only = yaw_only
+        self._left_off = left_off
+        self._right_off = right_off
 
     def wait_for_action_server(self) -> bool:
         self.get_logger().info(f'Waiting for action server: {self._action_name}')
@@ -38,15 +41,15 @@ class AppleVisionProClient(Node):
         goal.left_controller_ee_name = 'left_fr3_hand_tcp'
         goal.right_controller_ee_name = 'right_fr3_hand_tcp'
         # goal.left_tracking_mode_on = True
-        # goal.left_tracking_mode_on = False
-        goal.left_tracking_mode_on = True
-        goal.right_tracking_mode_on = True
+        # goal.right_tracking_mode_on = True
+        goal.left_tracking_mode_on = not self._left_off
+        goal.right_tracking_mode_on = not self._right_off
         goal.move_orientation = True
         goal.constraint_yaw_only = self._yaw_only
         # goal.controller_pos_multiplier = 1.0
-        goal.controller_pos_multiplier = 1.0
+        goal.controller_pos_multiplier = 0.8
         # goal.controller_ori_multiplier = 1.0
-        goal.controller_ori_multiplier = 1.5
+        goal.controller_ori_multiplier = 0.8
 
         self.get_logger().info('Sending AppleVisionPro goal')
         future = self._client.send_goal_async(goal)
@@ -100,6 +103,8 @@ class AppleVisionProClient(Node):
 def parse_args():
     parser = argparse.ArgumentParser(description='Enable or disable AppleVisionPro teleoperation')
     parser.add_argument('--yaw-only', action='store_true')
+    parser.add_argument('--left-off', action='store_true')
+    parser.add_argument('--right-off', action='store_true')
     parser.add_argument(
         '--disable',
         action='store_true',
@@ -107,9 +112,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_apple_vision_pro(disable=False, yaw_only=False):
+def run_apple_vision_pro(disable=False, yaw_only=False, left_off=False, right_off=False):
     rclpy.init()
-    node = AppleVisionProClient(disable=disable, yaw_only=yaw_only)
+    node = AppleVisionProClient(disable=disable, yaw_only=yaw_only, left_off=left_off, right_off=right_off)
 
     try:
         ok = node.run()
@@ -124,7 +129,7 @@ def run_apple_vision_pro(disable=False, yaw_only=False):
 def main(args=None):
     del args
     cli_args = parse_args()
-    run_apple_vision_pro(disable=cli_args.disable, yaw_only=cli_args.yaw_only)
+    run_apple_vision_pro(disable=cli_args.disable, yaw_only=cli_args.yaw_only, left_off=cli_args.left_off, right_off=cli_args.right_off)
 
 
 if __name__ == '__main__':
