@@ -35,6 +35,14 @@
 #define IDX_JOY_X_AXES     2 // index of Joy x axes in "l/rhand_joy" topic (range: -1 ~ 1)
 #define IDX_JOY_Y_AXES     3 // index of Joy y axes in "l/rhand_joy" topic (range: -1 ~ 1)
 
+/*
+Teleoperation modes:
+    1) Base Mode       : joystick -> mobile base
+    2) Arm Mode        : omega -> manipulator (EE in base frame)
+    3) Whole-Body Mode : omega -> mobile base + manipulator (EE in world/task frame)
+    4) Dual Mode       : omega + joystick -> simultaneous EE and base control
+*/
+
 namespace fr3_husky_controller::servers::fr3_husky
 {
 
@@ -89,24 +97,23 @@ private:
     std::vector<bool> is_mouse_mode_on_{false, false};
     bool is_initialize_mode_on_{false};
     std::vector<bool> is_gripper_mode_on_{false, false};
-    int mobile_mode_{0}; // 0: manipulator mode, 1: left controller, 2: right controller
-    Eigen::Affine3d world2mobi_base_frozen_{Eigen::Affine3d::Identity()}; // base pose snapshot when entering manipulator mode
-
-    // null space HomePose cubic
-    double control_start_time_{0.0};
-    Eigen::VectorXd q_init_for_home_; // joint config snapshot at manipulator mode start (for cubic null space)
+    int mobile_mode_{0}; // 0: Stop mode, 1: left controller, 2: right controller
 
     // robot data
     std::vector<Eigen::Matrix3d> tracker_base2robot_base_;
-    std::map<std::string, drc::TaskSpaceData> ee_data_; // Note that these vaules are wrt world frame, not manipulator base frame
+    std::map<std::string, drc::TaskSpaceData> ee_data_; // world to EE
+    Eigen::Affine3d T_world2mobi_base_;                 // world to mobile base
+    Eigen::Affine3d T_world2mobi_base_init_;            // world to mobile base
 
     // action goal data
     int control_mode_;                     // 0: CLIK, 1: OSF, 2:QPIK, 3:QPID
+    int teleop_mode_;                      // 0: Base, 1: Arm, 2: Wholebody, 3:Dual
     std::string left_controller_ee_name_;  // EE name for tracking left vive controller
     std::string right_controller_ee_name_; // EE name for tracking right vive controller
     bool move_ori_;
     double controller_pos_multiplier_;
     double controller_ori_multiplier_;
+    double dual_mobile_null_torque_gain_{100.0};
 
     // initialize mode
     const Eigen::Vector<double, FR3_DOF> HomePose{0., -0.785, 0.0, -2.356, 0.0, 1.571, 0.785};

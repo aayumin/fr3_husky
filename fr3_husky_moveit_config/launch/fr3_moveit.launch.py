@@ -87,6 +87,11 @@ def _launch_setup(context, *args, **kwargs):
         config_subdir        = 'dual'
         controllers_yaml_rel = os.path.join('config', 'dual', 'dual_fr3_controllers.yaml')
         jsp_sources          = ['dual_fr3/joint_states']
+        joint_limits = {
+            'robot_description_planning': load_yaml(
+                'fr3_husky_moveit_config', os.path.join('config', 'dual', 'dual_fr3_joint_limits.yaml')
+            )
+        }
     else:
         urdf_path    = os.path.join(pkg_desc, 'robots', 'single_fr3.urdf.xacro')
         srdf_path    = os.path.join(pkg_desc, 'robots', 'single_fr3.srdf.xacro')
@@ -98,6 +103,11 @@ def _launch_setup(context, *args, **kwargs):
         config_subdir        = robot_side
         controllers_yaml_rel = os.path.join('config', robot_side, 'single_fr3_controllers.yaml')
         jsp_sources          = [f'{robot_side}_fr3/joint_states']
+        joint_limits = {
+            'robot_description_planning': load_yaml(
+                'fr3_husky_moveit_config', os.path.join('config', config_subdir, 'single_fr3_joint_limits.yaml')
+            )
+        }
 
     robot_description_str = xacro.process_file(urdf_path, mappings=urdf_mappings).toprettyxml(indent='  ')
     robot_description_semantic_str = xacro.process_file(srdf_path, mappings=srdf_mappings).toprettyxml(indent='  ')
@@ -114,18 +124,37 @@ def _launch_setup(context, *args, **kwargs):
         'fr3_husky_moveit_config', os.path.join('config', 'ompl_planning.yaml')
     ) or {}
 
-    ompl_planning_pipeline_config = {
-        'move_group': {
-            'planning_plugin': 'ompl_interface/OMPLPlanner',
-            'request_adapters': 'default_planner_request_adapters/AddTimeOptimalParameterization '
-                                'default_planner_request_adapters/ResolveConstraintFrames '
-                                'default_planner_request_adapters/FixWorkspaceBounds '
-                                'default_planner_request_adapters/FixStartStateBounds '
-                                'default_planner_request_adapters/FixStartStateCollision '
-                                'default_planner_request_adapters/FixStartStatePathConstraints',
-            'start_state_max_bounds_error': 0.1,
+    if os.environ['ROS_DISTRO'] == 'humble':
+        ompl_planning_pipeline_config = {
+            'move_group': {
+                'planning_plugin': 'ompl_interface/OMPLPlanner',
+                'request_adapters': 'default_planner_request_adapters/AddTimeOptimalParameterization '
+                                    'default_planner_request_adapters/ResolveConstraintFrames '
+                                    'default_planner_request_adapters/FixWorkspaceBounds '
+                                    'default_planner_request_adapters/FixStartStateBounds '
+                                    'default_planner_request_adapters/FixStartStateCollision '
+                                    'default_planner_request_adapters/FixStartStatePathConstraints',
+                'start_state_max_bounds_error': 0.1,
+            }
         }
-    }
+    else:
+        ompl_planning_pipeline_config = {
+            'move_group': {
+                'planning_plugins': ['ompl_interface/OMPLPlanner'],
+                'request_adapters': [
+                    'default_planning_request_adapters/ResolveConstraintFrames',
+                    'default_planning_request_adapters/ValidateWorkspaceBounds',
+                    'default_planning_request_adapters/CheckStartStateBounds',
+                    'default_planning_request_adapters/CheckStartStateCollision',
+                                    ],
+                'response_adapters': [
+                    'default_planning_response_adapters/AddTimeOptimalParameterization',
+                    'default_planning_response_adapters/ValidateSolution',
+                    'default_planning_response_adapters/DisplayMotionPath'
+                                    ],
+                'start_state_max_bounds_error': 0.1,
+            }
+        }
     ompl_planning_pipeline_config['move_group'].update(ompl_planning_yaml)
 
     moveit_controllers = {
@@ -164,28 +193,50 @@ def _launch_setup(context, *args, **kwargs):
                 'fake_sensor_commands': fake_sensor_commands,
                 'namespace': namespace,
                 'launch_rviz': 'false',
+                'launch_move_group': 'false'
             }.items(),
         )
     )
 
     # ---- move_group ----
-    nodes.append(
-        Node(
-            package='moveit_ros_move_group',
-            executable='move_group',
-            namespace=namespace,
-            output='screen',
-            parameters=[
-                robot_description,
-                robot_description_semantic,
-                kinematics_yaml,
-                ompl_planning_pipeline_config,
-                trajectory_execution,
-                moveit_controllers,
-                planning_scene_monitor_parameters,
-            ],
+    if os.environ['ROS_DISTRO'] == 'humble':
+        nodes.append(
+            Node(
+                package='moveit_ros_move_group',
+                executable='move_group',
+                namespace=namespace,
+                output='screen',
+                parameters=[
+                    robot_description,
+                    robot_description_semantic,
+                    kinematics_yaml,
+                    ompl_planning_pipeline_config,
+                    trajectory_execution,
+                    moveit_controllers,
+                    planning_scene_monitor_parameters,
+                ],
+            )
         )
-    )
+    else:
+        kinematics_yaml = {'robot_description_kinematics': kinematics_yaml}
+        nodes.append(
+            Node(
+                package='moveit_ros_move_group',
+                executable='move_group',
+                namespace=namespace,
+                output='screen',
+                parameters=[
+                    robot_description,
+                    robot_description_semantic,
+                    kinematics_yaml,
+                    joint_limits,
+                    ompl_planning_pipeline_config,
+                    trajectory_execution,
+                    moveit_controllers,
+                    planning_scene_monitor_parameters,
+                ],
+            )
+        )
 
     # ---- RViz2 with MoveIt config ----
     rviz_config = os.path.join(pkg_moveit, 'rviz', 'moveit.rviz')

@@ -77,6 +77,59 @@ MoveToJoint::MoveToJoint(const std::string& name, const NodePtr& node,
         planning_group_ = arm_id + "_arm";
     }
 
+    // --- Create persistent MoveGroupInterface ---
+    {
+        bool params_ok = false;
+        try
+        {
+            auto pc = std::make_shared<rclcpp::SyncParametersClient>(moveit_node_, "move_group");
+            if (pc->wait_for_service(std::chrono::seconds(5)))
+            {
+                const std::vector<std::string> param_names{
+                    "robot_description", "robot_description_semantic"};
+                for (const auto& pname : param_names)
+                {
+                    if (moveit_node_->has_parameter(pname)) continue;
+                    auto vals = pc->get_parameters({pname});
+                    if (!vals.empty() &&
+                        vals[0].get_type() != rclcpp::ParameterType::PARAMETER_NOT_SET)
+                        moveit_node_->declare_parameter(pname, vals[0].get_parameter_value());
+                }
+                params_ok = moveit_node_->has_parameter("robot_description_semantic");
+            }
+            else
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "[%s] move_group param service not available within 5 s — "
+                            "MoveGroupInterface not created", name_.c_str());
+            }
+        }
+        catch (const std::exception& e)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "[%s] param forwarding failed: %s", name_.c_str(), e.what());
+        }
+
+        if (params_ok)
+        {
+            try
+            {
+                mgi_ = std::make_unique<moveit::planning_interface::MoveGroupInterface>(
+                    moveit_node_, planning_group_,
+                    std::shared_ptr<tf2_ros::Buffer>{},
+                    rclcpp::Duration::from_seconds(10.0));
+                RCLCPP_INFO(node_->get_logger(),
+                            "[%s] MoveGroupInterface ready", name_.c_str());
+            }
+            catch (const std::exception& e)
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "[%s] MoveGroupInterface creation failed: %s",
+                            name_.c_str(), e.what());
+            }
+        }
+    }
+
     RCLCPP_INFO(node_->get_logger(), "[%s] MoveToJoint created — group=%s", name_.c_str(),
                 planning_group_.c_str());
 }
@@ -135,68 +188,23 @@ void MoveToJoint::writeHoldCommands()
 
 void MoveToJoint::runPlanning()
 {
-    const std::string& group = planning_group_;
-    RCLCPP_INFO(node_->get_logger(), "[%s] planning group: %s", name_.c_str(), group.c_str());
+    RCLCPP_INFO(node_->get_logger(), "[%s] planning group: %s", name_.c_str(),
+                planning_group_.c_str());
 
     // ---- Phase 1: MoveIt2 planning ----------------------------------------
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     bool plan_ok = false;
     std::string err_msg;
 
-    // Forward robot_description{_semantic} from the move_group node to moveit_node_.
-    // MoveGroupInterface constructor calls std::terminate() (not throw) when these
-    // params are missing, so we MUST verify they are loaded before constructing it.
-    if (!moveit_node_->has_parameter("robot_description") ||
-        !moveit_node_->has_parameter("robot_description_semantic"))
-    {
-        try
-        {
-            auto pc = std::make_shared<rclcpp::SyncParametersClient>(
-                moveit_node_, "move_group");
-            if (pc->wait_for_service(std::chrono::seconds(5)))
-            {
-                const std::vector<std::string> param_names{
-                    "robot_description", "robot_description_semantic"};
-                for (const auto& pname : param_names)
-                {
-                    if (moveit_node_->has_parameter(pname)) continue;
-                    auto vals = pc->get_parameters({pname});
-                    if (!vals.empty() &&
-                        vals[0].get_type() != rclcpp::ParameterType::PARAMETER_NOT_SET)
-                    {
-                        moveit_node_->declare_parameter(
-                            pname, vals[0].get_parameter_value());
-                    }
-                }
-            }
-            else
-            {
-                RCLCPP_WARN(node_->get_logger(),
-                            "[%s] move_group param service not available within 5 s",
-                            name_.c_str());
-            }
-        }
-        catch (const std::exception& e)
-        {
-            RCLCPP_WARN(node_->get_logger(),
-                        "[%s] param forwarding failed: %s", name_.c_str(), e.what());
-        }
-    }
-
-
-
-    // Guard: if robot_description_semantic is still missing, MoveGroupInterface
-    // would call std::terminate() (a FATAL inside Humble's MoveItCpp — uncatchable).
-    // Fail gracefully instead.
-    if (!moveit_node_->has_parameter("robot_description_semantic"))
+    if (!mgi_)
     {
         RCLCPP_ERROR(node_->get_logger(),
-                     "[%s] robot_description_semantic not available. "
+                     "[%s] MoveGroupInterface not available. "
                      "Is move_group running? (launch fr3_moveit.launch.py, not "
                      "fr3_action_controller.launch.py alone)",
                      name_.c_str());
         std::lock_guard<std::mutex> lk(msg_mutex_);
-        plan_error_msg_ = "robot_description_semantic not available — start move_group first";
+        plan_error_msg_ = "MoveGroupInterface not available — start move_group first";
         plan_state_.store(PlanState::FAILED, std::memory_order_release);
         return;
     }
@@ -205,16 +213,10 @@ void MoveToJoint::runPlanning()
     {
         try
         {
-            moveit::planning_interface::MoveGroupInterface mgi(
-                moveit_node_,
-                group,
-                /*tf_buffer=*/{},
-                rclcpp::Duration::from_seconds(10.0));
-
-            mgi.setPlanningTime(10.0);  // bound plan() duration; also makes destructor ~10 s max
-            mgi.setStartStateToCurrentState();
-            mgi.setMaxVelocityScalingFactor(goal_vel_scale_);
-            mgi.setMaxAccelerationScalingFactor(goal_acc_scale_);
+            mgi_->setPlanningTime(10.0);
+            mgi_->setStartStateToCurrentState();
+            mgi_->setMaxVelocityScalingFactor(goal_vel_scale_);
+            mgi_->setMaxAccelerationScalingFactor(goal_acc_scale_);
 
             // Build target: fill ALL group joints from hardware q_total_,
             // then override with the goal's specified joints.
@@ -243,7 +245,7 @@ void MoveToJoint::runPlanning()
                     target[goal_joint_names_[i]] = goal_target_positions_[i];
             }
 
-            if (!mgi.setJointValueTarget(target))
+            if (!mgi_->setJointValueTarget(target))
             {
                 err_msg = "setJointValueTarget failed "
                           "(joint names or values out of bounds?)";
@@ -254,14 +256,21 @@ void MoveToJoint::runPlanning()
             }
             else
             {
-                const auto ec = mgi.plan(plan);
+                const auto ec = mgi_->plan(plan);
                 if (ec)
                 {
                     plan_ok = true;
-                    RCLCPP_INFO(node_->get_logger(),
-                                "[%s] planning succeeded (%zu waypoints)",
-                                name_.c_str(),
-                                plan.trajectory_.joint_trajectory.points.size());
+                    #if ROS_DISTRO == 22
+                        RCLCPP_INFO(node_->get_logger(),
+                                    "[%s] planning succeeded (%zu waypoints)",
+                                    name_.c_str(),
+                                    plan.trajectory_.joint_trajectory.points.size());
+                    #else
+                        RCLCPP_INFO(node_->get_logger(),
+                                    "[%s] planning succeeded (%zu waypoints)",
+                                    name_.c_str(),
+                                    plan.trajectory.joint_trajectory.points.size());
+                    #endif
                 }
                 else
                 {
@@ -327,7 +336,11 @@ void MoveToJoint::runPlanning()
 
 
     FJT::Goal jtc_goal;
-    jtc_goal.trajectory = plan.trajectory_.joint_trajectory;
+    #if ROS_DISTRO == 22
+        jtc_goal.trajectory = plan.trajectory_.joint_trajectory;
+    #else
+        jtc_goal.trajectory = plan.trajectory.joint_trajectory;
+    #endif
 
     // Send trajectory to JTC and wait for the JTC action result.
     // MoveToJoint stays in EXECUTING until the JTC result callback marks

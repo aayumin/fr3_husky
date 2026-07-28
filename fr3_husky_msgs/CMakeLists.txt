@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "action/TaskSpaceDeltaMove.action"
     "action/ScrewMotion.action"
     "action/ContactGuardedMotion.action"
+    "action/ContactGuardedDeltaMotion.action"
     "action/ViveTracker.action"
     "action/MobileMove.action"
     "action/AppleVisionPro.action"

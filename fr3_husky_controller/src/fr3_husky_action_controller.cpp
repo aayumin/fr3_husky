@@ -1,6 +1,7 @@
 #include "fr3_husky_controller/fr3_husky_action_controller.hpp"
 #include <mujoco/mujoco.h>
 
+#include <time.h>
 #include <unordered_set>
 #include <controller_manager_msgs/srv/list_hardware_interfaces.hpp>
 
@@ -365,7 +366,7 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
 
     std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller = std::make_shared<drc::MobileManipulator::RobotController>(robot_data);
 
-    if(!loadDRCGains(robot_controller)) return CallbackReturn::ERROR;
+    if(!loadDRCGains(robot_controller, robot_data)) return CallbackReturn::ERROR;
 
     ee_names_.clear();
     for (const auto & name : params_.robot_name)
@@ -389,8 +390,38 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     }
     model_updater_->setDRCRobotData(std::move(robot_data));
     model_updater_->setDRCRobotController(std::move(robot_controller));
+    model_updater_->setWheelEncoderMultiplier(params_.wheel_encoder_multiplier);
 
 
+    task_servers_ = servers::ActionServerManager::createAllFR3Husky(get_node(), *model_updater_);
+    active_task_.reset();
+    
+    idle_control_ = std::make_unique<servers::IdleControl>("fr3_husky_idle", get_node(), *model_updater_);
+
+    // Odometry publishers
+    odometry_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>("~/odom", rclcpp::SystemDefaultsQoS());
+    odometry_transform_publisher_ = get_node()->create_publisher<tf2_msgs::msg::TFMessage>("/tf", rclcpp::SystemDefaultsQoS());
+
+    publish_rate_ = params_.publish_rate;
+
+    mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_wheel_, model_updater_->base_vel_b_wheel_));
+    mobi_state_filtered_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
+
+    joy_msg_received_.store(false, std::memory_order_release);
+    estop_button_pressed_.store(false, std::memory_order_release);
+    estop_is_active_ = false;
+    estop_button_index_warned_ = false;
+    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+        kJoyTopic, rclcpp::SystemDefaultsQoS(),
+        std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
+
+    odom_timer_ = get_node()->create_wall_timer(
+        std::chrono::duration<double>(1.0 / publish_rate_),
+        [this]()
+        {
+            this->publishFromMobileStateBuffer();
+        }
+    );
 
     heavy_init_done_ = true;
     LOGI(get_node(), "Heavy initialization done.");
@@ -688,15 +719,27 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         return controller_interface::return_type::ERROR;
     }
 
-    if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
-    {
-        if (!is_halted_)
+    #if ROS_DISTRO == 22
+        if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
         {
-            model_updater_->haltCommands();
-            is_halted_ = true;
+            if (!is_halted_)
+            {
+                if (model_updater_) model_updater_->haltCommands();
+                is_halted_ = true;
+            }
+            return controller_interface::return_type::OK;
         }
-        return controller_interface::return_type::OK;
-    }
+    #else
+        if (get_lifecycle_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+        {
+            if (!is_halted_)
+            {
+                if (model_updater_) model_updater_->haltCommands();
+                is_halted_ = true;
+            }
+            return controller_interface::return_type::OK;
+        }
+    #endif
 
     if (params_.use_estop && !isEstopJoyConnected())
     {
@@ -704,15 +747,15 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         return controller_interface::return_type::ERROR;
     }
 
-
-
+    struct timespec update_start_ts;
+    clock_gettime(CLOCK_MONOTONIC, &update_start_ts);
 
     play_time_ = get_node()->now().seconds();
     model_updater_->updateJointStates();
     model_updater_->updateRobotData();
 
-    mobi_state_pub_buf_.writeFromNonRT(
-        std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
+    mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_wheel_, model_updater_->base_vel_b_wheel_));
+    mobi_state_filtered_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
 
     // 1. active task 종료/취소 처리
     if (active_task_)
@@ -849,8 +892,33 @@ controller_interface::return_type FR3HuskyActionController::update(const rclcpp:
         model_updater_->forceStopMobile();
     }
 
+    struct timespec update_end_ts;
+    clock_gettime(CLOCK_MONOTONIC, &update_end_ts);
+    const double elapsed_ms = static_cast<double>(update_end_ts.tv_sec  - update_start_ts.tv_sec)  * 1e3
+                            + static_cast<double>(update_end_ts.tv_nsec - update_start_ts.tv_nsec) * 1e-6;
 
-
+    if (elapsed_ms > kUpdatePeriodMs)
+    {
+        ++update_overrun_count_;
+        update_overrun_sum_ms_ += elapsed_ms;
+        if (elapsed_ms > update_overrun_max_ms_) update_overrun_max_ms_ = elapsed_ms;
+    }
+    if (++update_cycle_count_ >= kUpdateWindowSize)
+    {
+        if (update_overrun_count_ >= kUpdateOverrunWarnThreshold)
+        {
+            const double avg_ms = update_overrun_sum_ms_ / update_overrun_count_;
+            LOGE(get_node(),
+                "[Controller] update() overran %.0f ms budget %d/%d times in the last %d cycles "
+                "(avg: %.3f ms, max: %.3f ms). Consider reducing computation load.",
+                kUpdatePeriodMs, update_overrun_count_, kUpdateWindowSize, kUpdateWindowSize,
+                avg_ms, update_overrun_max_ms_);
+        }
+        update_cycle_count_    = 0;
+        update_overrun_count_  = 0;
+        update_overrun_sum_ms_ = 0.0;
+        update_overrun_max_ms_ = 0.0;
+    }
 
     return controller_interface::return_type::OK;
 }
@@ -1050,22 +1118,30 @@ bool FR3HuskyActionController::setJointIndex(const std::string& urdf_xml, drc::M
 
 void FR3HuskyActionController::publishFromMobileStateBuffer()
 {
-    const std::pair<Eigen::Affine2d, Eigen::Vector3d> s = *mobi_state_pub_buf_.readFromRT();
-    const Eigen::Affine2d base_pose_w = s.first;
-    const Eigen::Vector3d base_vel_b = s.second;
+    // /odom topic: raw wheel odometry (independent EKF input, no feedback loop)
+    const std::pair<Eigen::Affine2d, Eigen::Vector3d> s_raw = *mobi_state_pub_buf_.readFromRT();
+    const Eigen::Affine2d base_pose_raw = s_raw.first;
+    const Eigen::Vector3d base_vel_raw  = s_raw.second;
 
-    // yaw from pose
-    const double yaw = Eigen::Rotation2Dd(base_pose_w.linear()).angle();
+    const double yaw_raw = Eigen::Rotation2Dd(base_pose_raw.linear()).angle();
+    tf2::Quaternion q_raw;
+    q_raw.setRPY(0.0, 0.0, yaw_raw);
 
-    tf2::Quaternion q;
-    q.setRPY(0.0, 0.0, yaw);
+    // TF odom → base_link: filtered pose when available, else raw wheel
+    const std::pair<Eigen::Affine2d, Eigen::Vector3d> s_filt = *mobi_state_filtered_pub_buf_.readFromRT();
+    const Eigen::Affine2d base_pose_tf = s_filt.first;
 
+    const double yaw_tf = Eigen::Rotation2Dd(base_pose_tf.linear()).angle();
+    tf2::Quaternion q_tf;
+    q_tf.setRPY(0.0, 0.0, yaw_tf);
 
-    // Odometry publish 
+    const rclcpp::Time now = get_node()->now();
+
+    // Odometry publish (raw wheel → EKF input)
     if (odometry_publisher_)
     {
         nav_msgs::msg::Odometry msg;
-        msg.header.stamp = get_node()->now();   
+        msg.header.stamp    = now;
         msg.header.frame_id = params_.odom_frame_id;
         msg.child_frame_id  = params_.base_frame_id;
 
@@ -1079,35 +1155,35 @@ void FR3HuskyActionController::publishFromMobileStateBuffer()
             msg.twist.covariance[diag] = params_.twist_covariance_diagonal[i];
         }
 
-        msg.pose.pose.position.x = base_pose_w.translation()(0);
-        msg.pose.pose.position.y = base_pose_w.translation()(1);
-        msg.pose.pose.orientation.x = q.x();
-        msg.pose.pose.orientation.y = q.y();
-        msg.pose.pose.orientation.z = q.z();
-        msg.pose.pose.orientation.w = q.w();
+        msg.pose.pose.position.x    = base_pose_raw.translation()(0);
+        msg.pose.pose.position.y    = base_pose_raw.translation()(1);
+        msg.pose.pose.orientation.x = q_raw.x();
+        msg.pose.pose.orientation.y = q_raw.y();
+        msg.pose.pose.orientation.z = q_raw.z();
+        msg.pose.pose.orientation.w = q_raw.w();
 
-        msg.twist.twist.linear.x  = base_vel_b(0);
-        msg.twist.twist.angular.z = base_vel_b(2);
+        msg.twist.twist.linear.x  = base_vel_raw(0);
+        msg.twist.twist.angular.z = base_vel_raw(2);
 
         odometry_publisher_->publish(msg);
     }
 
-    // TF publish
+    // TF publish: odom → base_link (filtered pose for accurate robot model in RViz)
     if (odometry_transform_publisher_)
     {
         tf2_msgs::msg::TFMessage tfm;
         tfm.transforms.resize(1);
         auto & t = tfm.transforms[0];
 
-        t.header.stamp = get_node()->now();
+        t.header.stamp    = now;
         t.header.frame_id = params_.odom_frame_id;
         t.child_frame_id  = params_.base_frame_id;
-        t.transform.translation.x = base_pose_w.translation()(0);
-        t.transform.translation.y = base_pose_w.translation()(1);
-        t.transform.rotation.x = q.x();
-        t.transform.rotation.y = q.y();
-        t.transform.rotation.z = q.z();
-        t.transform.rotation.w = q.w();
+        t.transform.translation.x = base_pose_tf.translation()(0);
+        t.transform.translation.y = base_pose_tf.translation()(1);
+        t.transform.rotation.x = q_tf.x();
+        t.transform.rotation.y = q_tf.y();
+        t.transform.rotation.z = q_tf.z();
+        t.transform.rotation.w = q_tf.w();
 
         odometry_transform_publisher_->publish(tfm);
     }
@@ -1151,10 +1227,13 @@ bool FR3HuskyActionController::isEstopJoyConnected() const
     return estop_joy_subscriber_ && estop_joy_subscriber_->get_publisher_count() > 0;
 }
 
-bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller)
+bool FR3HuskyActionController::loadDRCGains(
+    std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller,
+    const std::shared_ptr<drc::MobileManipulator::RobotData>& robot_data)
 {
     constexpr size_t task_dof = 6;
-    constexpr size_t base_dof = 3;
+    const size_t mobile_dof = static_cast<size_t>(robot_data->getMobileDof());
+    const size_t actuator_dof = static_cast<size_t>(robot_data->getActuatorDof());
 
     const auto & joint = params_.dyros_robot_controller.manipulator_joint_gains;
     const auto & task  = params_.dyros_robot_controller.task_gains;
@@ -1184,15 +1263,15 @@ bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulat
     if (!check_vector_size("dyros_robot_controller.QPIK_weight.tracking.weights", task_dof, qpik.tracking.weights.size())) return false;
     if (!check_vector_size("dyros_robot_controller.QPIK_weight.joint.velocity.manipulator", manipulator_dof_, qpik.joint.velocity.manipulator.size())) return false;
     if (!check_vector_size("dyros_robot_controller.QPIK_weight.joint.acceleration.manipulator", manipulator_dof_, qpik.joint.acceleration.manipulator.size())) return false;
-    if (!check_vector_size("dyros_robot_controller.QPIK_weight.joint.velocity.mobile", base_dof, qpik.joint.velocity.mobile.size())) return false;
-    if (!check_vector_size("dyros_robot_controller.QPIK_weight.joint.acceleration.mobile", base_dof, qpik.joint.acceleration.mobile.size())) return false;
+    if (!check_vector_size("dyros_robot_controller.QPIK_weight.joint.velocity.mobile", mobile_dof, qpik.joint.velocity.mobile.size())) return false;
+    if (!check_vector_size("dyros_robot_controller.QPIK_weight.joint.acceleration.mobile", mobile_dof, qpik.joint.acceleration.mobile.size())) return false;
 
     // QPID weights
     if (!check_vector_size("dyros_robot_controller.QPID_weight.tracking.weights", task_dof, qpid.tracking.weights.size())) return false;
     if (!check_vector_size("dyros_robot_controller.QPID_weight.joint.velocity.manipulator", manipulator_dof_, qpid.joint.velocity.manipulator.size())) return false;
     if (!check_vector_size("dyros_robot_controller.QPID_weight.joint.acceleration.manipulator", manipulator_dof_, qpid.joint.acceleration.manipulator.size())) return false;
-    if (!check_vector_size("dyros_robot_controller.QPID_weight.joint.velocity.mobile", base_dof, qpid.joint.velocity.mobile.size())) return false;
-    if (!check_vector_size("dyros_robot_controller.QPID_weight.joint.acceleration.mobile", base_dof, qpid.joint.acceleration.mobile.size())) return false;
+    if (!check_vector_size("dyros_robot_controller.QPID_weight.joint.velocity.mobile", mobile_dof, qpid.joint.velocity.mobile.size())) return false;
+    if (!check_vector_size("dyros_robot_controller.QPID_weight.joint.acceleration.mobile", mobile_dof, qpid.joint.acceleration.mobile.size())) return false;
 
     const Eigen::VectorXd mani_joint_kp = Eigen::Map<const Eigen::VectorXd>(joint.kp.data(), joint.kp.size());
     const Eigen::VectorXd mani_joint_kv = Eigen::Map<const Eigen::VectorXd>(joint.kv.data(), joint.kv.size());
@@ -1212,6 +1291,23 @@ bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulat
     const Eigen::VectorXd qpid_mani_acc_damping = Eigen::Map<const Eigen::VectorXd>(qpid.joint.acceleration.manipulator.data(), qpid.joint.acceleration.manipulator.size());
     const Eigen::VectorXd qpid_mobi_vel_damping = Eigen::Map<const Eigen::VectorXd>(qpid.joint.velocity.mobile.data(), qpid.joint.velocity.mobile.size());
     const Eigen::VectorXd qpid_mobi_acc_damping = Eigen::Map<const Eigen::VectorXd>(qpid.joint.acceleration.mobile.data(), qpid.joint.acceleration.mobile.size());
+
+    const auto actuator_idx = robot_data->getActuatorIndex();
+    Eigen::VectorXd qpik_vel_damping = Eigen::VectorXd::Zero(actuator_dof);
+    qpik_vel_damping.segment(actuator_idx.mani_start, manipulator_dof_) = qpik_mani_damping;
+    qpik_vel_damping.segment(actuator_idx.mobi_start, mobile_dof) = qpik_mobi_damping;
+
+    Eigen::VectorXd qpik_acc_damping = Eigen::VectorXd::Zero(actuator_dof);
+    qpik_acc_damping.segment(actuator_idx.mani_start, manipulator_dof_) = qpik_mani_acc_damping;
+    qpik_acc_damping.segment(actuator_idx.mobi_start, mobile_dof) = qpik_mobi_acc_damping;
+
+    Eigen::VectorXd qpid_vel_damping = Eigen::VectorXd::Zero(actuator_dof);
+    qpid_vel_damping.segment(actuator_idx.mani_start, manipulator_dof_) = qpid_mani_vel_damping;
+    qpid_vel_damping.segment(actuator_idx.mobi_start, mobile_dof) = qpid_mobi_vel_damping;
+
+    Eigen::VectorXd qpid_acc_damping = Eigen::VectorXd::Zero(actuator_dof);
+    qpid_acc_damping.segment(actuator_idx.mani_start, manipulator_dof_) = qpid_mani_acc_damping;
+    qpid_acc_damping.segment(actuator_idx.mobi_start, mobile_dof) = qpid_mobi_acc_damping;
 
     std::ostringstream oss;
     oss << "dyros robot controller gains" << "\n"

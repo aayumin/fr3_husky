@@ -61,12 +61,12 @@ bool OmegaHaptic::acceptGoal(const ActionT::Goal& goal)
         return false;
     }
 
-    if (goal.mode < 0 || goal.mode > 3)
+    if (goal.control_mode < 0 || goal.control_mode > 3)
     {
         RCLCPP_WARN(node_->get_logger(),
                                          "[%s] Reject action: mode must be 0 to 3 (0: CLIK, 1: OSF, 2: QPIK, 3: QPID). The mode from action goal is %d.",
                                          name_.c_str(),
-                                         static_cast<int>(goal.mode));
+                                         static_cast<int>(goal.control_mode));
         return false;
     }
 
@@ -82,7 +82,7 @@ bool OmegaHaptic::acceptGoal(const ActionT::Goal& goal)
 
 void OmegaHaptic::onGoalAccepted(const ActionT::Goal& goal)
 {
-    control_mode_ = goal.mode;
+    control_mode_ = goal.control_mode;
     control_ee_name_ = goal.ee_name;
     move_ori_ = goal.move_orientation;
     haptic_pos_multiplier_ = static_cast<double>(goal.haptic_pos_multiplier);
@@ -95,6 +95,8 @@ void OmegaHaptic::onGoalAccepted(const ActionT::Goal& goal)
 
 void OmegaHaptic::onStart()
 {
+    const double current_time = node_->now().seconds();
+
     {
         std::lock_guard<std::mutex> lock(haptic_pose_mutex_);
         haptic_pose_.setIdentity();
@@ -120,17 +122,21 @@ void OmegaHaptic::onStart()
     ee_data[control_ee_name_].x = fr3_model_updater_.robot_data_->getPose(control_ee_name_);
     ee_data[control_ee_name_].xdot = fr3_model_updater_.robot_data_->getVelocity(control_ee_name_);
     ee_data[control_ee_name_].xddot.setZero();
+    ee_data[control_ee_name_].current_time = current_time;
     ee_data[control_ee_name_].setInit();
     ee_data[control_ee_name_].setDesired();
 
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
 }
 
-OmegaHaptic::ComputeResult OmegaHaptic::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
+OmegaHaptic::ComputeResult OmegaHaptic::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
+    const double current_time = time.seconds();
+
     ee_data[control_ee_name_].x = fr3_model_updater_.robot_data_->getPose(control_ee_name_);
     ee_data[control_ee_name_].xdot = fr3_model_updater_.robot_data_->getVelocity(control_ee_name_);
     ee_data[control_ee_name_].xddot.setZero();
+    ee_data[control_ee_name_].current_time = current_time;
 
     Eigen::Affine3d haptic_pose_local;
     Eigen::Vector6d haptic_vel_local;
@@ -299,11 +305,16 @@ OmegaHaptic::ResultPtr OmegaHaptic::makeResult(StopReason reason)
 
 void OmegaHaptic::subPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
 {
+    const double cutoff_freq = 100.;
+
     Eigen::Vector3d position(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
-    position = dyros_math::lowPassFilter(position, haptic_pose_.translation(), 0.001, 0.002);
+    position = dyros_math::lowPassFilter(position, haptic_pose_.translation(), fr3_model_updater_.dt_, 1./cutoff_freq);
     Eigen::Quaterniond quaternion(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
     quaternion.normalize();
-    Eigen::Matrix3d orientation = quaternion.toRotationMatrix();
+    Eigen::Quaterniond prev_quat(haptic_pose_.linear());
+    const double alpha = fr3_model_updater_.dt_ / (fr3_model_updater_.dt_ + (1./cutoff_freq));
+    Eigen::Quaterniond filtered_quat = prev_quat.slerp(alpha, quaternion);
+    Eigen::Matrix3d orientation = filtered_quat.normalized().toRotationMatrix();
     {
         std::lock_guard<std::mutex> lock(haptic_pose_mutex_);
         haptic_pose_.translation() = position;

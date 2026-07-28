@@ -9,9 +9,11 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Vector3
 from fr3_husky_task_manager.contact_guarded_motion import ContactGuardedMotionClient
 from fr3_husky_task_manager.task_space_delta_move  import TaskSpaceDeltaMoveClient
 from fr3_husky_task_manager.task_space_move  import TaskSpaceMoveClient
+from fr3_husky_task_manager.screw import ScrewMotionClient
 
 
 def run_nut_tightening(
@@ -49,19 +51,15 @@ def run_nut_tightening(
         right_position = DEFAULT_RIGHT_POSE["position"] 
         right_rpy = DEFAULT_RIGHT_POSE["rpy"] 
         if arm == "left":
-            left_rpy[2] += nut_yaw
-            left_position = nut_position
-            left_position[0] -=  dist_offset * math.cos(nut_yaw)
-            left_position[1] -=  dist_offset * math.sin(nut_yaw)
+            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + nut_yaw]
+            left_position = [nut_position[0] - dist_offset * math.cos(nut_yaw), nut_position[1] - dist_offset * math.sin(nut_yaw), nut_position[2]]
         elif arm == "right":
-            right_rpy[2] += nut_yaw
-            right_position = nut_position
-            right_position[0] -=  dist_offset * math.cos(nut_yaw)
-            right_position[1] -=  dist_offset * math.sin(nut_yaw)
+            right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + nut_yaw]
+            right_position = [nut_position[0] - dist_offset * math.cos(nut_yaw), nut_position[1] - dist_offset * math.sin(nut_yaw), nut_position[2]]
         else: raise(f"not implemented for arm={arm}")
 
-        node = TaskSpaceDeltaMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
-        is_success, result = send_goal_and_get_result(node, "Task-space delta move", arm)
+        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+        is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
         if not is_success: return result
 
 
@@ -77,36 +75,28 @@ def run_nut_tightening(
         ## rotate and tightening the nut
         ## TODO
         if arm == "left":
-            left_rpy = DEFAULT_LEFT_POSE["rpy"]
-            left_rpy[2] += rotation_angle
+            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + rotation_angle]
             left_position = nut_position
         elif arm == "right":
-            right_rpy = DEFAULT_RIGHT_POSE["rpy"]
-            right_rpy[2] += nut_yaw
+            right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + rotation_angle]
             right_position = nut_position
         else: raise(f"not implemented for arm={arm}")
-        node = TaskSpaceDeltaMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 1.0, pos_tolerance, ori_tolerance)
-        is_success, result = send_goal_and_get_result(node, "Task-space delta move", arm)
+        node = ScrewMotionClient(arm, use_z_axis=True, axis_base=[0.0, 0.0, 1.0], center_direction_ee=[1.0, 0.0, 0.0], offset=0.1, angle=45, angle_in_degrees=True)
+        is_success, result = send_goal_and_get_result(node, "Screw motion", arm)
         if not is_success: return result
 
 
         ## backward
         if arm == "left":
-            left_rpy = DEFAULT_LEFT_POSE["rpy"]
-            left_rpy[2] += rotation_angle
-            left_position = nut_position
-            left_position[0] -=  dist_offset * math.cos(rotation_angle)
-            left_position[1] -=  dist_offset * math.sin(rotation_angle)
+            left_position = [nut_position[0] - dist_offset * math.cos(rotation_angle), nut_position[1] - dist_offset * math.sin(rotation_angle), nut_position[2]]
+            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + rotation_angle]
         elif arm == "right":
-            right_rpy = DEFAULT_RIGHT_POSE["rpy"]
-            right_rpy[2] += nut_yaw
-            right_position = nut_position
-            right_position[0] -=  dist_offset * math.cos(rotation_angle)
-            right_position[1] -=  dist_offset * math.sin(rotation_angle)
+            right_position = [nut_position[0] - dist_offset * math.cos(rotation_angle), nut_position[1] - dist_offset * math.sin(rotation_angle), nut_position[2]]
+            right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + rotation_angle]
         else: raise(f"not implemented for arm={arm}")
         
-        node = TaskSpaceDeltaMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 1.0, pos_tolerance, ori_tolerance)
-        is_success, result = send_goal_and_get_result(node, "Task-space delta move", arm)
+        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 1.0, pos_tolerance, ori_tolerance)
+        is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
         if not is_success: return result
         nut_yaw = rotation_angle % math.pi / 3.0
 

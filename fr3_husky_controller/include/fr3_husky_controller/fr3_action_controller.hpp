@@ -140,6 +140,17 @@ class FR3ActionController : public controller_interface::ControllerInterface
         bool is_halted_ = false;
 
         // ========================================================================
+        // ========================== Update Timing ================================
+        // ========================================================================
+        static constexpr double   kUpdatePeriodMs             = 1.0;   // [ms] expected cycle time
+        static constexpr int      kUpdateWindowSize           = 1000;  // cycles per evaluation window (~1 s at 1 kHz)
+        static constexpr int      kUpdateOverrunWarnThreshold = 10;    // overruns per window before warning
+        int    update_cycle_count_    = 0;
+        int    update_overrun_count_  = 0;
+        double update_overrun_sum_ms_ = 0.0;
+        double update_overrun_max_ms_ = 0.0;
+
+        // ========================================================================
         // ============================ Action Servers ============================
         // ========================================================================
         std::unique_ptr<FR3ModelUpdater> model_updater_;

@@ -1080,6 +1080,33 @@ Eigen::Vector6d AppleVisionPro::computeTargetVelocity(
     return vel;
 }
 
+void AppleVisionPro::clear(){
+
+    // left
+    ee_data_[left_controller_ee_name_].x = fr3_husky_model_updater_.robot_data_->getPose(left_controller_ee_name_);
+    ee_data_[left_controller_ee_name_].xdot = fr3_husky_model_updater_.robot_data_->getVelocity(left_controller_ee_name_);
+    ee_data_[left_controller_ee_name_].xddot.setZero();
+    ee_data_[left_controller_ee_name_].xdot_desired.setZero();
+    ee_data_[left_controller_ee_name_].setInit();
+    ee_data_[left_controller_ee_name_].setDesired();
+
+    
+    // right
+    ee_data_[right_controller_ee_name_].x = fr3_husky_model_updater_.robot_data_->getPose(right_controller_ee_name_);
+    ee_data_[right_controller_ee_name_].xdot = fr3_husky_model_updater_.robot_data_->getVelocity(right_controller_ee_name_);
+    ee_data_[right_controller_ee_name_].xddot.setZero();
+    ee_data_[right_controller_ee_name_].xdot_desired.setZero();
+    ee_data_[right_controller_ee_name_].setInit();
+    ee_data_[right_controller_ee_name_].setDesired();
+
+    // model
+    fr3_husky_model_updater_.q_desired_total_ = fr3_husky_model_updater_.q_total_;
+    fr3_husky_model_updater_.qdot_desired_total_.setZero();
+    fr3_husky_model_updater_.wheel_vel_desired_.setZero();
+    fr3_husky_model_updater_.torque_desired_total_ = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(fr3_husky_model_updater_.q_desired_total_, fr3_husky_model_updater_.qdot_desired_total_, false);
+}
+
+
 void AppleVisionPro::onStop(StopReason reason)
 {
     fr3_husky_model_updater_.haltCommands();
@@ -1097,6 +1124,8 @@ void AppleVisionPro::onStop(StopReason reason)
     {
         reason_str = "aborted";
     }
+
+    clear();
 
     RCLCPP_INFO(node_->get_logger(), "[%s] stopped (%s)", name_.c_str(), reason_str);
 }

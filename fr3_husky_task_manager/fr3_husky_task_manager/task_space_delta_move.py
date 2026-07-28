@@ -13,6 +13,16 @@ from fr3_husky_msgs.action import TaskSpaceDeltaMove
 
 
 class TaskSpaceDeltaMoveClient(Node):
+    # DEFAULT_LEFT_DELTA_POSE = {
+    #     "position": [0.05, 0.0, 0.0],
+    #     "rpy": [0.0, 0.0, 0.52],
+    # }
+
+    # DEFAULT_RIGHT_DELTA_POSE = {
+    #     "position": [0.05, 0.0, 0.0],
+    #     "rpy": [0.0, 0.0, -0.52],
+    # }
+
     DEFAULT_LEFT_DELTA_POSE = {
         # "position": [0.05, 0.0, 0.0],
         # "rpy": [0.0, 0.0, 0.52],
@@ -21,7 +31,6 @@ class TaskSpaceDeltaMoveClient(Node):
     }
 
     
-
     DEFAULT_RIGHT_DELTA_POSE = {
         # "position": [0.05, 0.0, 0.0],
         # "rpy": [0.0, 0.0, -0.52],

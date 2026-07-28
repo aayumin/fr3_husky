@@ -1,7 +1,7 @@
-# ContactGuardedMotion.action
+# ContactGuardedDeltaMotion.action
 
 string[] ee_names
-geometry_msgs/Pose[] target_poses
+geometry_msgs/Pose[] target_delta_poses
 
 float64 duration
 float64 pos_tolerance

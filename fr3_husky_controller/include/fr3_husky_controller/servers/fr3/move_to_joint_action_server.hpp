@@ -12,6 +12,7 @@
 
 #include <action_msgs/msg/goal_status_array.hpp>
 #include <control_msgs/action/follow_joint_trajectory.hpp>
+#include <moveit/move_group_interface/move_group_interface.h>
 
 #include <fr3_husky_msgs/action/move_to_joint.hpp>
 
@@ -90,6 +91,7 @@ private:
 
     // ---- MoveIt2 node (no executor — MoveGroupInterface spins it internally) --
     rclcpp::Node::SharedPtr moveit_node_;
+    std::unique_ptr<moveit::planning_interface::MoveGroupInterface> mgi_;
 
     // ---- FollowJointTrajectory client → fr3_joint_trajectory_controller ------
     rclcpp_action::Client<FJT>::SharedPtr jtc_client_;

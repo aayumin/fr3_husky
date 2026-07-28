@@ -304,10 +304,10 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
 
         if (fr3_husky_model_updater_.robot_controller_ && has_velocities && duration > 0.0)
         {
-            q_desired = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointPositionCubic(
+            q_desired = fr3_husky_model_updater_.robot_controller_->mani.moveJointPositionCubic(
                 q_seg_end, qdot_seg_end, q_seg_start, qdot_seg_start,
                 elapsed, t_start, duration);
-            qdot_desired = fr3_husky_model_updater_.robot_controller_->moveManipulatorJointVelocityCubic(
+            qdot_desired = fr3_husky_model_updater_.robot_controller_->mani.moveJointVelocityCubic(
                 q_seg_end, qdot_seg_end, q_seg_start, qdot_seg_start,
                 elapsed, t_start, duration);
 
@@ -342,7 +342,7 @@ JointTrajectoryController::ComputeResult JointTrajectoryController::compute(
             return ComputeResult::ABORTED;
         }
         const Eigen::VectorXd torque =
-            fr3_husky_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(
+            fr3_husky_model_updater_.robot_controller_->mani.moveJointTorqueStep(
                 q_desired, qdot_desired, false);
         fr3_husky_model_updater_.torque_desired_total_ = torque - fr3_husky_model_updater_.g_total_;
         fr3_husky_model_updater_.writeCommand(fr3_husky_model_updater_.torque_desired_total_,

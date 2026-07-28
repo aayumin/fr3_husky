@@ -1,5 +1,6 @@
 # Define the goal
-int8 mode 0                               # 0: CLIK, 1: OSF, 2:QPIK, 3:QPID (default: 0)
+int8 control_mode 0                       # 0: CLIK, 1: OSF, 2:QPIK, 3:QPID (default: 0)
+int8 teleop_mode 1                        # 0: Base, 1: Arm, 2: Wholebody, 3:Dual (default: 1)
 string left_controller_ee_name            # EE name for tracking left vive controller
 string right_controller_ee_name           # EE name for tracking right vive controller
 bool move_orientation False               # move EE orientation or not (default: False)

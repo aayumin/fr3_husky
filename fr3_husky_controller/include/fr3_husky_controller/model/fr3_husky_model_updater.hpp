@@ -14,9 +14,11 @@
 #include <Eigen/Eigen>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
 #include <franka_semantic_components/franka_robot_model.hpp>
+#include <realtime_tools/realtime_buffer.h>
 
 #include "fr3_husky_controller/model/fr3_model_updater.hpp"
 
@@ -28,6 +30,13 @@ namespace fr3_husky_controller
 
 class FR3HuskyModelUpdater final : public ModelUpdaterBase
 {
+    private:
+        void ensureFilteredOdometrySubscription();
+
+        double wheel_encoder_multiplier_ = 1.0;
+        rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr filtered_odometry_sub_ = nullptr;
+        realtime_tools::RealtimeBuffer<std::shared_ptr<nav_msgs::msg::Odometry>> filtered_odometry_buf_;
+
     public:
         FR3HuskyModelUpdater() = default;
 
@@ -116,9 +125,11 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         std::map<std::string, Eigen::Vector6d>  xdot_w_init_;       // EE velocity wrt world frame
 
         // Current
-        Eigen::Affine2d  base_pose_w_;                               // mobile base pose wrt world frame    
-        Eigen::Vector3d  base_vel_w_;                                // mobile base velocity wrt world frame 
-        Eigen::Vector3d  base_vel_b_;                                // mobile base velocity wrt mobile base frame   
+        Eigen::Affine2d  base_pose_w_;                               // mobile base pose wrt world frame (filtered if /odometry/filtered available, else wheel)
+        Eigen::Vector3d  base_vel_w_;                                // mobile base velocity wrt world frame
+        Eigen::Vector3d  base_vel_b_;                                // mobile base velocity wrt mobile base frame (filtered if available)
+        Eigen::Affine2d  base_pose_w_wheel_;                         // mobile base pose from raw wheel odometry only (for /odom publishing)
+        Eigen::Vector3d  base_vel_b_wheel_;                          // mobile base velocity from raw wheel odometry only (for /odom publishing)
         std::map<std::string, Eigen::Affine3d>  x_m_;                // EE pose wrt manipulator base frame       
         std::map<std::string, Eigen::Vector6d>  xdot_m_;             // EE velocity wrt manipulator base frame     
         std::map<std::string, Eigen::Affine3d>  x_w_;                // EE pose wrt world frame         
