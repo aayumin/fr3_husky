@@ -10,9 +10,15 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-find_package(ros2_control_cmake REQUIRED)
-set_compiler_options()
-export_windows_symbols()
+if($ENV{ROS_DISTRO} MATCHES "humble")
+    add_definitions(-DROS_DISTRO=22)
+else()
+    add_definitions(-DROS_DISTRO=24)
+endif()
+
+# find_package(ros2_control_cmake REQUIRED)
+# set_compiler_options()
+# export_windows_symbols()
 
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS

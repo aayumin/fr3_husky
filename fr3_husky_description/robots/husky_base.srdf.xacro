@@ -1,21 +1,37 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
-    <xacro:macro name="husky_base_srdf">
-        <disable_collisions link1="front_left_wheel"  link2="front_right_wheel"  reason="Never"/>
-        <disable_collisions link1="front_left_wheel"  link2="mobile_base"        reason="Adjacent"/>
-        <disable_collisions link1="front_left_wheel"  link2="rear_left_wheel"    reason="Never"/>
-        <disable_collisions link1="front_left_wheel"  link2="rear_right_wheel"   reason="Never"/>
-        <disable_collisions link1="front_left_wheel"  link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="front_right_wheel" link2="mobile_base"        reason="Adjacent"/>
-        <disable_collisions link1="front_right_wheel" link2="rear_left_wheel"    reason="Never"/>
-        <disable_collisions link1="front_right_wheel" link2="rear_right_wheel"   reason="Never"/>
-        <disable_collisions link1="front_right_wheel" link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="mobile_base"       link2="rear_left_wheel"    reason="Adjacent"/>
-        <disable_collisions link1="mobile_base"       link2="rear_right_wheel"   reason="Adjacent"/>
-        <disable_collisions link1="mobile_base"       link2="top_structure_link" reason="Adjacent"/>
-        <disable_collisions link1="rear_left_wheel"   link2="rear_right_wheel"   reason="Never"/>
-        <disable_collisions link1="rear_right_wheel"  link2="top_structure_link" reason="Never"/>
-        <disable_collisions link1="rear_left_wheel"   link2="top_structure_link" reason="Never"/>
+    <xacro:macro name="husky_base_srdf" params="as_two_wheels:='false'">
+
+        <xacro:property name="as_two_wheels_val" value="${as_two_wheels}"/>
+        <xacro:property name="wheel_suffix"
+                        value="${'_dummy' if str(as_two_wheels_val).lower() == 'true' else ''}"/>
+
+    <disable_collisions link1="base_link" link2="base_wheel_collision_box_link"    reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="front_left_wheel${wheel_suffix}"  reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="front_right_wheel${wheel_suffix}" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rear_left_wheel${wheel_suffix}"   reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rear_right_wheel${wheel_suffix}"  reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="top_structure_link"               reason="Adjacent"/>
+
+    <disable_collisions link1="base_wheel_collision_box_link" link2="front_left_wheel${wheel_suffix}"  reason="Default"/>
+    <disable_collisions link1="base_wheel_collision_box_link" link2="front_right_wheel${wheel_suffix}" reason="Default"/>
+    <disable_collisions link1="base_wheel_collision_box_link" link2="rear_left_wheel${wheel_suffix}"   reason="Default"/>
+    <disable_collisions link1="base_wheel_collision_box_link" link2="rear_right_wheel${wheel_suffix}"  reason="Default"/>
+    <disable_collisions link1="base_wheel_collision_box_link" link2="top_structure_link"               reason="Never"/>
+
+    <disable_collisions link1="front_left_wheel${wheel_suffix}" link2="front_right_wheel${wheel_suffix}" reason="Never"/>
+    <disable_collisions link1="front_left_wheel${wheel_suffix}" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
+    <disable_collisions link1="front_left_wheel${wheel_suffix}" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
+    <disable_collisions link1="front_left_wheel${wheel_suffix}" link2="top_structure_link"               reason="Never"/>
+
+    <disable_collisions link1="front_right_wheel${wheel_suffix}" link2="rear_left_wheel${wheel_suffix}"   reason="Never"/>
+    <disable_collisions link1="front_right_wheel${wheel_suffix}" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
+    <disable_collisions link1="front_right_wheel${wheel_suffix}" link2="top_structure_link"               reason="Never"/>
+
+    <disable_collisions link1="rear_left_wheel${wheel_suffix}" link2="rear_right_wheel${wheel_suffix}"  reason="Never"/>
+    <disable_collisions link1="rear_left_wheel${wheel_suffix}" link2="top_structure_link"               reason="Never"/>
+
+    <disable_collisions link1="rear_right_wheel${wheel_suffix}" link2="top_structure_link"               reason="Never"/>
     </xacro:macro>
 </robot>

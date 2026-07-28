@@ -251,6 +251,11 @@ def _launch_setup(context, *args, **kwargs):
             cfg_sub      = 'dual'
             ctrl_yaml    = os.path.join('config', 'dual', 'dual_fr3_controllers.yaml')
             jsp_src      = ['dual_fr3/joint_states']
+            joint_limits = {
+                'robot_description_planning': _load_yaml(
+                    'fr3_husky_moveit_config', os.path.join('config', 'dual', 'dual_fr3_joint_limits.yaml')
+                )
+            }
         else:
             robot_side   = robot_sides[0]
             urdf_mg_path = os.path.join(pkg_desc, 'robots', 'single_fr3.urdf.xacro')
@@ -261,6 +266,11 @@ def _launch_setup(context, *args, **kwargs):
             cfg_sub      = robot_side
             ctrl_yaml    = os.path.join('config', robot_side, 'single_fr3_controllers.yaml')
             jsp_src      = [f'{robot_side}_fr3/joint_states']
+            joint_limits = {
+                'robot_description_planning': _load_yaml(
+                    'fr3_husky_moveit_config', os.path.join('config', cfg_sub, 'single_fr3_joint_limits.yaml')
+                )
+            }
 
         mg_robot_desc = xacro.process_file(urdf_mg_path, mappings=urdf_mg_map).toprettyxml(indent='  ')
         mg_srdf       = xacro.process_file(srdf_path, mappings=srdf_map).toprettyxml(indent='  ')
@@ -268,42 +278,85 @@ def _launch_setup(context, *args, **kwargs):
         ompl_yaml     = _load_yaml('fr3_husky_moveit_config', os.path.join('config', 'ompl_planning.yaml'))
         ctrl_mgr_yaml = _load_yaml('fr3_husky_moveit_config', ctrl_yaml)
 
-        ompl_cfg = {
-            'move_group': {
-                'planning_plugin': 'ompl_interface/OMPLPlanner',
-                'request_adapters':
-                    'default_planner_request_adapters/AddTimeOptimalParameterization '
-                    'default_planner_request_adapters/ResolveConstraintFrames '
-                    'default_planner_request_adapters/FixWorkspaceBounds '
-                    'default_planner_request_adapters/FixStartStateBounds '
-                    'default_planner_request_adapters/FixStartStateCollision '
-                    'default_planner_request_adapters/FixStartStatePathConstraints',
-                'start_state_max_bounds_error': 0.1,
+        if os.environ['ROS_DISTRO'] == 'humble':
+            ompl_cfg = {
+                'move_group': {
+                    'planning_plugin': 'ompl_interface/OMPLPlanner',
+                    'request_adapters':
+                        'default_planner_request_adapters/AddTimeOptimalParameterization '
+                        'default_planner_request_adapters/ResolveConstraintFrames '
+                        'default_planner_request_adapters/FixWorkspaceBounds '
+                        'default_planner_request_adapters/FixStartStateBounds '
+                        'default_planner_request_adapters/FixStartStateCollision '
+                        'default_planner_request_adapters/FixStartStatePathConstraints',
+                    'start_state_max_bounds_error': 0.1,
+                }
             }
-        }
-        ompl_cfg['move_group'].update(ompl_yaml)
+            ompl_cfg['move_group'].update(ompl_yaml)
 
-        nodes.append(Node(
-            package='moveit_ros_move_group',
-            executable='move_group',
-            namespace=namespace,
-            output='screen',
-            parameters=[
-                {'robot_description': mg_robot_desc},
-                {'robot_description_semantic': mg_srdf},
-                kinematics,
-                ompl_cfg,
-                {'moveit_manage_controllers': False,
-                 'trajectory_execution.allowed_execution_duration_scaling': 1.2,
-                 'trajectory_execution.allowed_goal_duration_margin': 0.5,
-                 'trajectory_execution.allowed_start_tolerance': 0.01},
-                {'moveit_simple_controller_manager': ctrl_mgr_yaml,
-                 'moveit_controller_manager':
-                     'moveit_simple_controller_manager/MoveItSimpleControllerManager'},
-                {'publish_planning_scene': True, 'publish_geometry_updates': True,
-                 'publish_state_updates': True, 'publish_transforms_updates': True},
-            ],
-        ))
+            nodes.append(Node(
+                package='moveit_ros_move_group',
+                executable='move_group',
+                namespace=namespace,
+                output='screen',
+                parameters=[
+                    {'robot_description': mg_robot_desc},
+                    {'robot_description_semantic': mg_srdf},
+                    kinematics,
+                    ompl_cfg,
+                    {'moveit_manage_controllers': False,
+                     'trajectory_execution.allowed_execution_duration_scaling': 1.2,
+                     'trajectory_execution.allowed_goal_duration_margin': 0.5,
+                     'trajectory_execution.allowed_start_tolerance': 0.01},
+                    {'moveit_simple_controller_manager': ctrl_mgr_yaml,
+                     'moveit_controller_manager':
+                         'moveit_simple_controller_manager/MoveItSimpleControllerManager'},
+                    {'publish_planning_scene': True, 'publish_geometry_updates': True,
+                     'publish_state_updates': True, 'publish_transforms_updates': True},
+                ],
+            ))
+        else:
+            ompl_cfg = {
+                'move_group': {
+                    'planning_plugins': ['ompl_interface/OMPLPlanner'],
+                    'request_adapters': [
+                        'default_planning_request_adapters/ResolveConstraintFrames',
+                        'default_planning_request_adapters/ValidateWorkspaceBounds',
+                        'default_planning_request_adapters/CheckStartStateBounds',
+                        'default_planning_request_adapters/CheckStartStateCollision',
+                                        ],
+                    'response_adapters': [
+                        'default_planning_response_adapters/AddTimeOptimalParameterization',
+                        'default_planning_response_adapters/ValidateSolution',
+                        'default_planning_response_adapters/DisplayMotionPath'
+                                        ],
+                    'start_state_max_bounds_error': 0.1,
+                }
+            }
+            ompl_cfg['move_group'].update(ompl_yaml)
+
+            nodes.append(Node(
+                package='moveit_ros_move_group',
+                executable='move_group',
+                namespace=namespace,
+                output='screen',
+                parameters=[
+                    {'robot_description': mg_robot_desc},
+                    {'robot_description_semantic': mg_srdf},
+                    {'robot_description_kinematics': kinematics},
+                    joint_limits,
+                    ompl_cfg,
+                    {'moveit_manage_controllers': False,
+                     'trajectory_execution.allowed_execution_duration_scaling': 1.2,
+                     'trajectory_execution.allowed_goal_duration_margin': 0.5,
+                     'trajectory_execution.allowed_start_tolerance': 0.01},
+                    {'moveit_simple_controller_manager': ctrl_mgr_yaml,
+                     'moveit_controller_manager':
+                         'moveit_simple_controller_manager/MoveItSimpleControllerManager'},
+                    {'publish_planning_scene': True, 'publish_geometry_updates': True,
+                     'publish_state_updates': True, 'publish_transforms_updates': True},
+                ],
+            ))
 
         # MuJoCo: bridge {side}_fr3/joint_states → joint_states for move_group's scene monitor
         if use_mujoco.lower() == 'true':

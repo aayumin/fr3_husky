@@ -78,6 +78,11 @@ fr3_husky_action_controller:
     default_value: 1.0,
     description: "Correction factor when radius of wheels differs from the nominal value in ``wheel_radius`` parameter.",
   }
+  wheel_encoder_multiplier: {
+    type: double,
+    default_value: 1.0,
+    description: "Correction factor when the wheel encoder resolution differs from the nominal value in ``wheel_encoder_multiplier`` parameter.",
+  }
   odom_frame_id: {
     type: string,
     default_value: "odom",
@@ -159,7 +164,7 @@ fr3_husky_action_controller:
       ik:
         kp: {
           type: double_array,
-          default_value: [10.0, 10.0, 10.0, 30.0, 30.0, 30.0],
+          default_value: [10.0, 10.0, 10.0, 20.0, 20.0, 20.0],
           description: "Task space position error gains for IK (CLIK/QPIK) control (size must be 6)"
         }
       id: 
@@ -177,37 +182,7 @@ fr3_husky_action_controller:
       tracking:
         weights: {
             type: double_array,
-            default_value: [10.0, 10.0, 10.0, 40.0, 40.0, 40.0],
-            description: "Weight for track given task space velocity (size must be 6)"
-          }
-      joint:
-        velocity:
-          manipulator: {
-              type: double_array,
-              default_value: [0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
-              description: "Weight for damping manipulator joint velocity (size must be 7 * num_robot)"
-            }
-          mobile: {
-              type: double_array,
-              default_value: [],
-              description: "Weight for damping mobile base velocity (size must be 3)"
-            }
-        acceleration:
-          manipulator: {
-              type: double_array,
-              default_value: [0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001],
-              description: "Weight for damping manipulator joint acceleration (size must be 7 * num_robot)"
-            }
-          mobile: {
-              type: double_array,
-              default_value: [],
-              description: "Weight for damping mobile base acceleration (size must be 3)"
-            }
-    QPID_weight:
-      tracking:
-        weights: {
-            type: double_array,
-            default_value: [10.0, 10.0, 10.0, 1.0, 1.0, 1.0],
+            default_value: [10.0, 10.0, 10.0, 20.0, 20.0, 20.0],
             description: "Weight for track given task space velocity (size must be 6)"
           }
       joint:
@@ -219,17 +194,47 @@ fr3_husky_action_controller:
             }
           mobile: {
               type: double_array,
-              default_value: [],
-              description: "Weight for damping mobile base velocity (size must be 3)"
+              default_value: [0.1, 0.1],
+              description: "Weight for mobile wheel velocity null-space tracking (size must be mobile_dof)"
             }
         acceleration:
           manipulator: {
               type: double_array,
-              default_value: [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0],
+              default_value: [0.000001, 0.000001, 0.000001, 0.000001, 0.000001, 0.000001, 0.000001],
               description: "Weight for damping manipulator joint acceleration (size must be 7 * num_robot)"
             }
           mobile: {
               type: double_array,
-              default_value: [],
-              description: "Weight for damping mobile base acceleration (size must be 3)"
+              default_value: [0.000001, 0.000001],
+              description: "Weight for damping mobile wheel acceleration (size must be mobile_dof)"
+            }
+    QPID_weight:
+      tracking:
+        weights: {
+            type: double_array,
+            default_value: [10.0, 10.0, 10.0, 40.0, 40.0, 40.0],
+            description: "Weight for track given task space velocity (size must be 6)"
+          }
+      joint:
+        velocity:
+          manipulator: {
+              type: double_array,
+              default_value: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+              description: "Weight for damping manipulator joint velocity (size must be 7 * num_robot)"
+            }
+          mobile: {
+              type: double_array,
+              default_value: [0.1, 0.1],
+              description: "Weight for damping mobile wheel velocity (size must be mobile_dof)"
+            }
+        acceleration:
+          manipulator: {
+              type: double_array,
+              default_value: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+              description: "Weight for damping manipulator joint acceleration (size must be 7 * num_robot)"
+            }
+          mobile: {
+              type: double_array,
+              default_value: [0.5, 0.5],
+              description: "Weight for damping mobile wheel acceleration (size must be mobile_dof)"
             }

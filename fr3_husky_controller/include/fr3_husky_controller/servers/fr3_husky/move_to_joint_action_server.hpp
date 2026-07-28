@@ -12,6 +12,8 @@
 
 #include <action_msgs/msg/goal_status_array.hpp>
 #include <control_msgs/action/follow_joint_trajectory.hpp>
+#include <moveit/move_group_interface/move_group_interface.h>
+
 #include <fr3_husky_msgs/action/move_to_joint.hpp>
 
 #include <fr3_husky_controller/servers/action_server_base.hpp>
@@ -68,6 +70,7 @@ private:
     FR3HuskyModelUpdater& fr3_husky_model_updater_;
 
     rclcpp::Node::SharedPtr moveit_node_;
+    std::unique_ptr<moveit::planning_interface::MoveGroupInterface> mgi_;
 
     rclcpp_action::Client<FJT>::SharedPtr jtc_client_;
 

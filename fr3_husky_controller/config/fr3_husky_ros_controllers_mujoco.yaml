@@ -1,0 +1,45 @@
+# MuJoCo simulation overrides for fr3_husky_ros_controllers.yaml
+# Loaded in addition to the base YAML when use_mujoco:=true.
+# Only the parameters that differ from real hardware are listed here.
+
+left_fr3_husky_action_controller:
+  ros__parameters:
+    wheel_separation: 0.512
+    wheel_separation_multiplier: 5.7
+    wheel_radius_multiplier: 1.0
+    wheel_encoder_multiplier: 1.0
+
+right_fr3_husky_action_controller:
+  ros__parameters:
+    wheel_separation: 0.512
+    wheel_separation_multiplier: 5.7
+    wheel_radius_multiplier: 1.0
+    wheel_encoder_multiplier: 1.0
+
+dual_fr3_husky_action_controller:
+  ros__parameters:
+    wheel_separation: 0.512
+    wheel_separation_multiplier: 5.7
+    wheel_radius_multiplier: 1.0
+    wheel_encoder_multiplier: 1.0
+
+left_test_fr3_husky_controller:
+  ros__parameters:
+    wheel_separation: 0.512
+    wheel_separation_multiplier: 5.7
+    wheel_radius_multiplier: 1.0
+    wheel_encoder_multiplier: 1.0
+
+right_test_fr3_husky_controller:
+  ros__parameters:
+    wheel_separation: 0.512
+    wheel_separation_multiplier: 5.7
+    wheel_radius_multiplier: 1.0
+    wheel_encoder_multiplier: 1.0
+
+dual_test_fr3_husky_controller:
+  ros__parameters:
+    wheel_separation: 0.512
+    wheel_separation_multiplier: 5.7
+    wheel_radius_multiplier: 1.0
+    wheel_encoder_multiplier: 1.0

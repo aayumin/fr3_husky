@@ -102,12 +102,12 @@ bool ViveTracker::acceptGoal(const ActionT::Goal& goal)
         return false;
     }
 
-    if (goal.mode < 0 || goal.mode > 3)
+    if (goal.control_mode < 0 || goal.control_mode > 3)
     {
         RCLCPP_WARN(node_->get_logger(),
                                          "[%s] Reject action: mode must be 0 to 3 (0: CLIK, 1: OSF, 2: QPIK, 3: QPID). The mode from action goal is %d.",
                                          name_.c_str(),
-                                         static_cast<int>(goal.mode));
+                                         static_cast<int>(goal.control_mode));
         return false;
     }
 
@@ -130,7 +130,7 @@ bool ViveTracker::acceptGoal(const ActionT::Goal& goal)
 
 void ViveTracker::onGoalAccepted(const ActionT::Goal& goal)
 {
-    control_mode_ = goal.mode;
+    control_mode_ = goal.control_mode;
     left_controller_ee_name_ = goal.left_controller_ee_name;
     right_controller_ee_name_ = goal.right_controller_ee_name;
     move_ori_ = goal.move_orientation;
@@ -144,6 +144,8 @@ void ViveTracker::onGoalAccepted(const ActionT::Goal& goal)
 
 void ViveTracker::onStart()
 {
+    const double current_time = node_->now().seconds();
+
     {
         std::lock_guard<std::mutex> lock(tracker_pose_mutex_);
         for(auto& tracker_pose : controller_poses_) tracker_pose.setIdentity();
@@ -167,6 +169,7 @@ void ViveTracker::onStart()
         ee_data_[left_controller_ee_name_].x = fr3_model_updater_.robot_data_->getPose(left_controller_ee_name_);
         ee_data_[left_controller_ee_name_].xdot = fr3_model_updater_.robot_data_->getVelocity(left_controller_ee_name_);
         ee_data_[left_controller_ee_name_].xddot.setZero();
+        ee_data_[left_controller_ee_name_].current_time = current_time;
         ee_data_[left_controller_ee_name_].setInit();
         ee_data_[left_controller_ee_name_].setDesired();
     }
@@ -176,6 +179,7 @@ void ViveTracker::onStart()
         ee_data_[right_controller_ee_name_].x = fr3_model_updater_.robot_data_->getPose(right_controller_ee_name_);
         ee_data_[right_controller_ee_name_].xdot = fr3_model_updater_.robot_data_->getVelocity(right_controller_ee_name_);
         ee_data_[right_controller_ee_name_].xddot.setZero();
+        ee_data_[right_controller_ee_name_].current_time = current_time;
         ee_data_[right_controller_ee_name_].setInit();
         ee_data_[right_controller_ee_name_].setDesired();
     }
@@ -183,13 +187,16 @@ void ViveTracker::onStart()
     RCLCPP_INFO(node_->get_logger(), "[%s] started", name_.c_str());
 }
 
-ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
+ViveTracker::ComputeResult ViveTracker::compute(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
+    const double current_time = time.seconds();
+
     for(auto& [ee_name, ee_data] : ee_data_)
     {
         ee_data.x = fr3_model_updater_.robot_data_->getPose(ee_name);
         ee_data.xdot = fr3_model_updater_.robot_data_->getVelocity(ee_name);
         ee_data.xddot.setZero();
+        ee_data.current_time = current_time;
     }
 
     std::vector<Eigen::Affine3d> controller_poses_local;   // left, right, head

@@ -201,11 +201,23 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         double publish_rate_ = 50.0;
 
         realtime_tools::RealtimeBuffer<std::pair<Eigen::Affine2d, Eigen::Vector3d>> mobi_state_pub_buf_;
+        realtime_tools::RealtimeBuffer<std::pair<Eigen::Affine2d, Eigen::Vector3d>> mobi_state_filtered_pub_buf_;
         rclcpp::TimerBase::SharedPtr odom_timer_;
 
         void publishFromMobileStateBuffer();
 
         bool is_halted_ = false;
+
+        // ========================================================================
+        // ========================== Update Timing ================================
+        // ========================================================================
+        static constexpr double   kUpdatePeriodMs       = 1.0;   // [ms] expected cycle time
+        static constexpr int      kUpdateWindowSize      = 1000;  // cycles per evaluation window (~1 s at 1 kHz)
+        static constexpr int      kUpdateOverrunWarnThreshold = 10; // overruns per window before warning
+        int    update_cycle_count_    = 0;
+        int    update_overrun_count_  = 0;
+        double update_overrun_sum_ms_ = 0.0;
+        double update_overrun_max_ms_ = 0.0;
 
         // ========================================================================
         // =============================== E-Stop =================================
@@ -220,13 +232,18 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         // ============================ Action Servers ============================
         // ========================================================================
         std::unique_ptr<FR3HuskyModelUpdater> model_updater_;
-        bool loadDRCGains(std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller);
+        bool loadDRCGains(std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller,
+                            const std::shared_ptr<drc::MobileManipulator::RobotData>& robot_data);
 
         std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> task_servers_;
         std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> controller_servers_;
 
         std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> active_task_;
         std::unique_ptr<fr3_husky_controller::servers::IdleControl> idle_control_;
+
+
+        // std::vector<std::shared_ptr<fr3_husky_controller::servers::ActionServerManager>> action_servers_;
+        // std::shared_ptr<fr3_husky_controller::servers::ActionServerManager> active_server_;
 
 };
 

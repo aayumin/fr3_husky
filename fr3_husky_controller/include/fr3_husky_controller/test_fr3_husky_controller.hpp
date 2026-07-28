@@ -255,6 +255,17 @@ private:
     bool halt_initialized_ = false;
     std::map<std::string, double> halt_position_;
 
+    // ========================================================================
+    // ========================== Update Timing ================================
+    // ========================================================================
+    static constexpr double   kUpdatePeriodMs             = 1.0;
+    static constexpr int      kUpdateWindowSize           = 1000;
+    static constexpr int      kUpdateOverrunWarnThreshold = 10;
+    int    update_cycle_count_    = 0;
+    int    update_overrun_count_  = 0;
+    double update_overrun_sum_ms_ = 0.0;
+    double update_overrun_max_ms_ = 0.0;
+
     struct WheelHandle
     {
         std::vector<std::reference_wrapper<const hardware_interface::LoanedStateInterface>> state;

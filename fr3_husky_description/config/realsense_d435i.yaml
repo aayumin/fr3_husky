@@ -1,0 +1,11 @@
+robot: 'Realsense D435i'
+collision_spheres:
+    d435i_link: 
+        - "center": [-0.01, -0.045, 0.0]
+          "radius": 0.01
+        - "center": [-0.01, -0.025, 0.0]
+          "radius": 0.01
+        - "center": [-0.01, -0.005, 0.0]
+          "radius": 0.01
+        - "center": [-0.01, 0.015, 0.0]
+          "radius": 0.01
