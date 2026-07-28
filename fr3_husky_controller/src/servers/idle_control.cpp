@@ -46,7 +46,7 @@ bool IdleControl::compute(const rclcpp::Time& /*time*/, const rclcpp::Duration& 
 
     if (fr3_husky_model_updater_)
     {
-        fr3_husky_model_updater_->writeHoldCommand(q_hold_, Eigen::Vector2d::Zero());
+        fr3_husky_model_updater_->haltCommands();
     }
     else
     {

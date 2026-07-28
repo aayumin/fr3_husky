@@ -89,7 +89,7 @@ HuskyPedal::ComputeResult HuskyPedal::compute(const rclcpp::Time& /*time*/, cons
     fr3_husky_model_updater_.wheel_vel_desired_ =
         fr3_husky_model_updater_.robot_controller_->MobileVelocityCommand(cmd_vel);
 
-    fr3_husky_model_updater_.writeHoldCommand(q_hold_, fr3_husky_model_updater_.wheel_vel_desired_);
+    fr3_husky_model_updater_.writeCommand(q_hold_, fr3_husky_model_updater_.wheel_vel_desired_);
     return ComputeResult::RUNNING;
 }
 

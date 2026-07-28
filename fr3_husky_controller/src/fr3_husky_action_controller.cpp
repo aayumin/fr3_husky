@@ -641,7 +641,7 @@ CallbackReturn FR3HuskyActionController::on_activate(const rclcpp_lifecycle::Sta
     model_updater_->setInitFromCurrent();
     if (model_updater_->q_total_init_.size() == static_cast<Eigen::Index>(model_updater_->manipulator_dof_))
     {
-        model_updater_->writeHoldCommand(model_updater_->q_total_init_, Eigen::Vector2d::Zero());
+        model_updater_->haltCommands();
     }
 
     is_halted_ = false;
@@ -1241,14 +1241,10 @@ bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulat
     robot_controller->setIDGain(task_id_kp, task_id_kv);
     robot_controller->setQPIKGain(qpik_tracking,
                                   qpik_mani_damping,
-                                  qpik_mani_acc_damping,
-                                  qpik_mobi_damping,
-                                  qpik_mobi_acc_damping);
+                                  qpik_mani_acc_damping);
     robot_controller->setQPIDGain(qpid_tracking,
                                   qpid_mani_vel_damping,
-                                  qpid_mani_acc_damping,
-                                  qpid_mobi_vel_damping,
-                                  qpid_mobi_acc_damping);
+                                  qpid_mani_acc_damping);
     return true;
 }
 }  // namespace fr3_husky_controller
