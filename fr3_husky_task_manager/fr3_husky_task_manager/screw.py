@@ -17,13 +17,17 @@ class ScrewMotionClient(Node):
 
     def __init__(
         self,
-        arm="left",
+        arm="right",
         use_z_axis=True,
         axis_base=None,
         center_direction_ee=None,
         offset=0.1,
-        angle=90.0,
+        angle=-120.0,
         angle_in_degrees=True,
+        pitch=0.00175,
+        mode="normal",
+        press_depth=0.001,
+        prepress_duration=0.5,
         duration=10.0,
         pos_tolerance=0.01,
         ori_tolerance=0.05,
@@ -45,6 +49,10 @@ class ScrewMotionClient(Node):
         self.declare_parameter("offset", offset)
         self.declare_parameter("angle", angle)
         self.declare_parameter("angle_in_degrees", angle_in_degrees)
+        self.declare_parameter("pitch", pitch)
+        self.declare_parameter("mode", mode)
+        self.declare_parameter("press_depth", press_depth)
+        self.declare_parameter("prepress_duration", prepress_duration)
         self.declare_parameter("duration", duration)
         self.declare_parameter("pos_tolerance", pos_tolerance)
         self.declare_parameter("ori_tolerance", ori_tolerance)
@@ -75,12 +83,22 @@ class ScrewMotionClient(Node):
         offset = self.get_parameter("offset").get_parameter_value().double_value
         angle = self.get_parameter("angle").get_parameter_value().double_value
         angle_in_degrees = self.get_parameter("angle_in_degrees").get_parameter_value().bool_value
+        pitch = self.get_parameter("pitch").get_parameter_value().double_value
+        mode = self.get_parameter("mode").get_parameter_value().string_value
+        press_depth = self.get_parameter("press_depth").get_parameter_value().double_value
+        prepress_duration = self.get_parameter("prepress_duration").get_parameter_value().double_value
         duration = self.get_parameter("duration").get_parameter_value().double_value
         pos_tolerance = self.get_parameter("pos_tolerance").get_parameter_value().double_value
         ori_tolerance = self.get_parameter("ori_tolerance").get_parameter_value().double_value
 
         if arm not in ("left", "right", "both"):
             raise ValueError("arm must be one of: left, right, both")
+        if mode not in ("normal", "press"):
+            raise ValueError("mode must be one of: normal, press")
+        if press_depth < 0.0:
+            raise ValueError("press_depth must be non-negative")
+        if prepress_duration < 0.0:
+            raise ValueError("prepress_duration must be non-negative")
         self._validate_vector(axis_base, "axis_base")
         self._validate_vector(center_direction_ee, "center_direction_ee")
 
@@ -91,6 +109,10 @@ class ScrewMotionClient(Node):
         goal.offset = offset
         goal.angle = angle
         goal.angle_in_degrees = angle_in_degrees
+        goal.pitch = pitch
+        goal.mode = mode
+        goal.press_depth = press_depth
+        goal.prepress_duration = prepress_duration
         goal.duration = duration
         goal.pos_tolerance = pos_tolerance
         goal.ori_tolerance = ori_tolerance
@@ -99,7 +121,8 @@ class ScrewMotionClient(Node):
         self.get_logger().info(
             f"Sending ScrewMotion goal to {self._action_name}: "
             f"arm={arm}, center_direction_ee={center_direction_ee}, "
-            f"offset={offset:.4f}, angle={angle:.4f} {unit}, duration={duration:.3f}"
+            f"offset={offset:.4f}, angle={angle:.4f} {unit}, pitch={pitch:.6f} m/rev, "
+            f"mode={mode}, press_depth={press_depth:.4f} m, prepress_duration={prepress_duration:.3f} s, duration={duration:.3f} s"
         )
 
         send_goal_future = self._client.send_goal_async(
@@ -148,13 +171,17 @@ class ScrewMotionClient(Node):
 
 
 def run_screw_motion(
-    arm="left",
+    arm="right",
     use_z_axis=True,
     axis_base=None,
     center_direction_ee=None,
     offset=0.1,
-    angle=90.0,
+    angle=-120.0,
     angle_in_degrees=True,
+    pitch=0.00175,
+    mode="normal",
+    press_depth=0.001,
+    prepress_duration=0.5,
     duration=10.0,
     pos_tolerance=0.01,
     ori_tolerance=0.05,
@@ -170,6 +197,10 @@ def run_screw_motion(
         offset=offset,
         angle=angle,
         angle_in_degrees=angle_in_degrees,
+        pitch=pitch,
+        mode=mode,
+        press_depth=press_depth,
+        prepress_duration=prepress_duration,
         duration=duration,
         pos_tolerance=pos_tolerance,
         ori_tolerance=ori_tolerance,
@@ -202,7 +233,7 @@ def main(args=None):
     del args
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--arm", choices=["left", "right", "both"], default="left")
+    parser.add_argument("--arm", choices=["left", "right", "both"], default="right")
     parser.add_argument(
         "--server",
         choices=["screw_z", "screw"],
@@ -226,7 +257,26 @@ def main(args=None):
         help="Direction from current EE origin to rotation center, expressed in current EE frame.",
     )
     parser.add_argument("--offset", type=float, default=0.1, help="Rotation radius [m].")
-    parser.add_argument("--angle", type=float, default=90.0, help="Rotation angle. Degrees by default.")
+    parser.add_argument("--angle", type=float, default=-120.0, help="Rotation angle. Degrees by default; negative tightens downward about +Z.")
+    parser.add_argument("--pitch", type=float, default=0.00175, help="Axial travel per revolution [m/rev]. Default is M12 coarse (0.00175).")
+    parser.add_argument(
+        "--mode",
+        choices=["normal", "press"],
+        default="normal",
+        help="normal: nominal screw path; press: build radial preload before rotating.",
+    )
+    parser.add_argument(
+        "--press-depth",
+        type=float,
+        default=0.001,
+        help="Radial virtual penetration toward the rotation axis [m]. Used in press mode.",
+    )
+    parser.add_argument(
+        "--prepress-duration",
+        type=float,
+        default=0.5,
+        help="Preload ramp duration before screw rotation [s]. Used in press mode.",
+    )
     parser.add_argument("--degree", dest="angle_in_degrees", action="store_true", default=True)
     parser.add_argument("--radian", dest="angle_in_degrees", action="store_false")
     parser.add_argument("--duration", type=float, default=10.0, help="Motion duration [s].")
@@ -243,6 +293,10 @@ def main(args=None):
         offset=parsed_args.offset,
         angle=parsed_args.angle,
         angle_in_degrees=parsed_args.angle_in_degrees,
+        pitch=parsed_args.pitch,
+        mode=parsed_args.mode,
+        press_depth=parsed_args.press_depth,
+        prepress_duration=parsed_args.prepress_duration,
         duration=parsed_args.duration,
         pos_tolerance=parsed_args.pos_tolerance,
         ori_tolerance=parsed_args.ori_tolerance,

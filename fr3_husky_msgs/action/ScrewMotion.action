@@ -17,6 +17,22 @@ float64 offset
 float64 angle
 bool angle_in_degrees
 
+# Axial travel per full revolution [m/rev].
+# Positive pitch follows the right-hand rule around axis_base. Zero keeps a planar arc.
+float64 pitch
+
+# Motion mode: "normal" follows the nominal screw path, while "press" first
+# builds a radial position preload and then keeps it during the screw motion.
+string mode
+
+# Radial virtual penetration toward the rotation axis [m].
+# Used only in press mode.
+float64 press_depth
+
+# Time used to ramp the radial preload from zero to press_depth [s].
+# Rotation starts after this ramp. Used only in press mode.
+float64 prepress_duration
+
 # Total motion duration [s].
 float64 duration
 

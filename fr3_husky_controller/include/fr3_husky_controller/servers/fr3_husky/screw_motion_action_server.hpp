@@ -73,6 +73,10 @@ private:
 
     double offset_{0.1};
     double angle_{0.0};
+    double pitch_{0.0};
+    std::string motion_mode_{"normal"};
+    double press_depth_{0.001};
+    double prepress_duration_{0.5};
     double duration_{10.0};
     double pos_tolerance_{0.01};
     double ori_tolerance_{0.05};
