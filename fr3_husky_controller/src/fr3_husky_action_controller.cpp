@@ -1239,8 +1239,16 @@ bool FR3HuskyActionController::loadDRCGains(std::shared_ptr<drc::MobileManipulat
     robot_controller->setManipulatorJointGain(mani_joint_kp, mani_joint_kv);
     robot_controller->setIKGain(task_ik_kp);
     robot_controller->setIDGain(task_id_kp, task_id_kv);
-    robot_controller->setQPIKGain(qpik_tracking, qpik_mani_damping, qpik_mani_acc_damping);
-    robot_controller->setQPIDGain(qpid_tracking, qpid_mani_vel_damping, qpid_mani_acc_damping);
+    robot_controller->setQPIKGain(qpik_tracking,
+                                  qpik_mani_damping,
+                                  qpik_mani_acc_damping,
+                                  qpik_mobi_damping,
+                                  qpik_mobi_acc_damping);
+    robot_controller->setQPIDGain(qpid_tracking,
+                                  qpid_mani_vel_damping,
+                                  qpid_mani_acc_damping,
+                                  qpid_mobi_vel_damping,
+                                  qpid_mobi_acc_damping);
     return true;
 }
 }  // namespace fr3_husky_controller

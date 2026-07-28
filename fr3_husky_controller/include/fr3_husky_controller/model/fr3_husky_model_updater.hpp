@@ -54,6 +54,7 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         bool GripperClose(const std::string robot_name, double speed = 0.1) { return GripperMove(robot_name, 0.00, speed); }
         bool GripperHoming(const std::string robot_name);
         bool GripperGrasp(const std::string robot_name, double width = 0.0, double speed = 0.1, double force = 30.0, std::pair<double, double> epsilon = {0.08, 0.08});
+        Eigen::VectorXd getJointTorque(const std::string robot_name) {return torque_[robot_name];}
     
     public:
         bool subtract_gravity_from_effort_command_{true};
