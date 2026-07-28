@@ -11,6 +11,12 @@
 
 namespace fr3_husky_controller
 {
+    namespace
+    {
+        constexpr const char* kJoyTopic = "/joy";
+    }  // namespace
+
+
 controller_interface::InterfaceConfiguration FR3HuskyActionController::state_interface_configuration() const
 {
     controller_interface::InterfaceConfiguration conf;
@@ -407,13 +413,13 @@ CallbackReturn FR3HuskyActionController::initialize_heavy_resources()
     mobi_state_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_wheel_, model_updater_->base_vel_b_wheel_));
     mobi_state_filtered_pub_buf_.writeFromNonRT(std::make_pair(model_updater_->base_pose_w_, model_updater_->base_vel_b_));
 
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
     estop_button_pressed_.store(false, std::memory_order_release);
     estop_is_active_ = false;
     estop_button_index_warned_ = false;
-    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+    estop_joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
         kJoyTopic, rclcpp::SystemDefaultsQoS(),
-        std::bind(&FR3HuskyActionController::onJoyMessage, this, std::placeholders::_1));
+        std::bind(&FR3HuskyActionController::onEstopJoyMessage, this, std::placeholders::_1));
 
     odom_timer_ = get_node()->create_wall_timer(
         std::chrono::duration<double>(1.0 / publish_rate_),

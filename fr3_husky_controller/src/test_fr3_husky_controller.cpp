@@ -315,13 +315,13 @@ CallbackReturn TestFr3HuskyController::on_configure(const rclcpp_lifecycle::Stat
     publish_rate_ = params_.publish_rate;
     mobi_state_pub_buf_.writeFromNonRT(std::make_pair(base_pose_w_, base_vel_b_));
 
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
     estop_button_pressed_.store(false, std::memory_order_release);
     estop_is_active_ = false;
     estop_button_index_warned_ = false;
-    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+    estop_joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
         "/joy", rclcpp::SystemDefaultsQoS(),
-        std::bind(&TestFr3HuskyController::onJoyMessage, this, std::placeholders::_1));
+        std::bind(&TestFr3HuskyController::onEstopJoyMessage, this, std::placeholders::_1));
 
     odom_timer_ = get_node()->create_wall_timer(
         std::chrono::duration<double>(1.0 / publish_rate_),
@@ -469,7 +469,7 @@ controller_interface::CallbackReturn TestFr3HuskyController::on_deactivate(const
     odom_timer_.reset();
     estop_is_active_ = false;
     estop_button_pressed_.store(false, std::memory_order_release);
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
 
     return CallbackReturn::SUCCESS;
 }
@@ -544,7 +544,7 @@ controller_interface::return_type TestFr3HuskyController::update(const rclcpp::T
     // -------------------------------------------------------------------------
 
     const bool estop_pressed = params_.use_estop &&
-                               joy_msg_received_.load(std::memory_order_acquire) &&
+                               estop_joy_msg_received_.load(std::memory_order_acquire) &&
                                estop_button_pressed_.load(std::memory_order_acquire);
     if (estop_pressed && !estop_is_active_)
     {
@@ -1001,9 +1001,9 @@ void TestFr3HuskyController::publishFromMobileStateBuffer()
     }
 }
 
-void TestFr3HuskyController::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
+void TestFr3HuskyController::onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
 {
-    joy_msg_received_.store(true, std::memory_order_release);
+    estop_joy_msg_received_.store(true, std::memory_order_release);
     if (!msg)
     {
         estop_button_pressed_.store(false, std::memory_order_release);
@@ -1024,7 +1024,7 @@ void TestFr3HuskyController::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr
     estop_button_pressed_.store(msg->buttons[static_cast<size_t>(idx)] != 0, std::memory_order_release);
 }
 
-bool TestFr3HuskyController::isJoyConnected() const
+bool TestFr3HuskyController::isEstopJoyConnected() const
 {
     return joy_subscriber_ && joy_subscriber_->get_publisher_count() > 0;
 }

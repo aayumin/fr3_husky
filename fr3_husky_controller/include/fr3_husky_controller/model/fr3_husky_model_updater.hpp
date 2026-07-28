@@ -47,6 +47,7 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
                         const std::vector<std::string>& ee_names) override;
         void setDRCRobotData(const std::shared_ptr<drc::MobileManipulator::RobotData>&& robot_data);
         void setDRCRobotController(const std::shared_ptr<drc::MobileManipulator::RobotController>&& robot_controller) { robot_controller_ = std::move(robot_controller); }
+        void setWheelEncoderMultiplier(double m) { wheel_encoder_multiplier_ = m; }
         void setSubtractGravityFromEffortCommand(bool enabled) { subtract_gravity_from_effort_command_ = enabled; }
         void updateJointStates() override;
         void updateRobotData() override;

@@ -265,6 +265,7 @@ def _launch_setup(context, *args, **kwargs):
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution([FindPackageShare('husky_control'), 'launch', 'control.launch.py'])
             ),
+            condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('use_mujoco'), "' == 'true'"])),
         ),
         ExecuteProcess(
             cmd=[

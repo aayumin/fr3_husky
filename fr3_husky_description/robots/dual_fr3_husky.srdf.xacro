@@ -1185,6 +1185,9 @@
     <disable_collisions link1="left_fr3_link2" link2="right_fr3_link2" reason="Never"/>
     <disable_collisions link1="left_fr3_link3" link2="right_fr3_link0" reason="Never"/>
 
+        </xacro:if>
+    </xacro:if>
+
     <xacro:if value="$(arg with_sc)"> <!-- if mobile  & is sc-->
 
         <!-- left link - base -->
