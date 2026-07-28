@@ -107,7 +107,7 @@ void MoveToJoint::writeHoldCommands()
     {
         if (!fr3_model_updater_.robot_controller_)
         {
-            fr3_model_updater_.haltCommands();
+            model_updater_.haltCommands();
             return;
         }
         // PD + gravity at latched positions: τ = Kp(q_hold-q) + Kv(0-qdot) + g
@@ -563,10 +563,6 @@ MoveToJoint::ComputeResult MoveToJoint::compute(
 
 void MoveToJoint::onStop(StopReason reason)
 {
-    if (reason != StopReason::SUCCEEDED)
-    {
-        fr3_model_updater_.haltCommands();
-    }
     if (reason == StopReason::CANCELED || reason == StopReason::ABORTED)
     {
         cancel_flag_.store(true, std::memory_order_relaxed);
@@ -585,6 +581,10 @@ void MoveToJoint::onStop(StopReason reason)
         }
     }
 
+    if (reason != StopReason::SUCCEEDED)
+    {
+        model_updater_.haltCommands();
+    }
 
     const char* rs = (reason == StopReason::CANCELED)  ? "canceled"  :
                      (reason == StopReason::SUCCEEDED) ? "succeeded" :
