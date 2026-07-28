@@ -11,9 +11,10 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import Vector3
 from fr3_husky_task_manager.contact_guarded_motion import ContactGuardedMotionClient
+from fr3_husky_task_manager.contact_guarded_delta_motion import ContactGuardedDeltaMotionClient
 from fr3_husky_task_manager.task_space_delta_move  import TaskSpaceDeltaMoveClient
 from fr3_husky_task_manager.task_space_move  import TaskSpaceMoveClient
-from fr3_husky_task_manager.screw import ScrewMotionClient
+from fr3_husky_task_manager.screw import ScrewMotionClient, run_screw_motion
 
 
 def run_nut_tightening(
@@ -67,23 +68,19 @@ def run_nut_tightening(
         if arm == "left": left_position = nut_position
         elif arm == "right": right_position = nut_position
         else: raise(f"not implemented for arm={arm}")
-        node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 1.0, pos_tolerance, ori_tolerance)
+        node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Contact-guarded motion", arm)
         if not is_success: return result
 
 
+
         ## rotate and tightening the nut
-        ## TODO
-        if arm == "left":
-            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + rotation_angle]
-            left_position = nut_position
-        elif arm == "right":
-            right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + rotation_angle]
-            right_position = nut_position
-        else: raise(f"not implemented for arm={arm}")
-        node = ScrewMotionClient(arm, use_z_axis=True, axis_base=[0.0, 0.0, 1.0], center_direction_ee=[1.0, 0.0, 0.0], offset=0.1, angle=45, angle_in_degrees=True)
-        is_success, result = send_goal_and_get_result(node, "Screw motion", arm)
-        if not is_success: return result
+        try:
+            result = run_screw_motion(arm, offset=0.1, angle = 90.0, duration = 10.0)
+        except:
+            return "screw motion failed"
+        finally:
+            if not rclpy.ok(): rclpy.init()
 
 
         ## backward
