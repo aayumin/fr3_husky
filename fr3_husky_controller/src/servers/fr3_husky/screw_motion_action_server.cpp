@@ -28,6 +28,8 @@ constexpr double kEps = 1e-9;
 constexpr double kDefaultOffset = 0.1;
 constexpr double kDefaultAngle = M_PI / 2.0;
 constexpr double kDefaultDuration = 10.0;
+constexpr double kDefaultPressDepth = 0.001;
+constexpr double kDefaultPrepressDuration = 0.5;
 constexpr double kDefaultPosTolerance = 0.01;
 constexpr double kDefaultOriTolerance = 0.05;
 
@@ -48,6 +50,37 @@ ScrewMotionBase::ScrewMotionBase(
 
 bool ScrewMotionBase::acceptGoal(const ActionT::Goal& goal)
 {
+    const std::string mode = goal.mode.empty() ? "normal" : goal.mode;
+    if (mode != "normal" && mode != "press")
+    {
+        RCLCPP_WARN(node_->get_logger(),
+                    "[%s] Reject: mode must be normal or press, got %s",
+                    name_.c_str(), mode.c_str());
+        return false;
+    }
+
+    if (goal.press_depth < 0.0 || goal.prepress_duration < 0.0)
+    {
+        RCLCPP_WARN(node_->get_logger(),
+                    "[%s] Reject: press_depth and prepress_duration must be non-negative",
+                    name_.c_str());
+        return false;
+    }
+
+    if (mode == "press")
+    {
+        const double effective_offset = goal.offset > 0.0 ? goal.offset : kDefaultOffset;
+        const double effective_press_depth =
+            goal.press_depth > 0.0 ? goal.press_depth : kDefaultPressDepth;
+        if (effective_press_depth >= effective_offset)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "[%s] Reject: press_depth (%.4f) must be smaller than offset (%.4f)",
+                        name_.c_str(), effective_press_depth, effective_offset);
+            return false;
+        }
+    }
+
     std::vector<std::string> ee_names;
     try
     {
@@ -86,6 +119,10 @@ void ScrewMotionBase::onGoalAccepted(const ActionT::Goal& goal)
     const double raw_angle = std::abs(goal.angle) > kEps ? goal.angle : kDefaultAngle;
     angle_ = goal.angle_in_degrees ? raw_angle * DEG2RAD : raw_angle;
     pitch_ = goal.pitch;
+    motion_mode_ = goal.mode.empty() ? "normal" : goal.mode;
+    press_depth_ = goal.press_depth > 0.0 ? goal.press_depth : kDefaultPressDepth;
+    prepress_duration_ =
+        goal.prepress_duration > 0.0 ? goal.prepress_duration : kDefaultPrepressDuration;
     duration_ = goal.duration > 0.0 ? goal.duration : kDefaultDuration;
     pos_tolerance_ = goal.pos_tolerance > 0.0 ? goal.pos_tolerance : kDefaultPosTolerance;
     ori_tolerance_ = goal.ori_tolerance > 0.0 ? goal.ori_tolerance : kDefaultOriTolerance;
@@ -99,8 +136,11 @@ void ScrewMotionBase::onGoalAccepted(const ActionT::Goal& goal)
     requestActivate();
 
     RCLCPP_INFO(node_->get_logger(),
-                "[%s] goal accepted: arm=%s offset=%.4f angle=%.4f rad pitch=%.6f m/rev duration=%.3f axis=[%.3f %.3f %.3f]",
-                name_.c_str(), arm_.c_str(), offset_, angle_, pitch_, duration_,
+                "[%s] goal accepted: arm=%s offset=%.4f angle=%.4f rad pitch=%.6f m/rev "
+                "mode=%s press_depth=%.4f prepress_duration=%.3f duration=%.3f "
+                "axis=[%.3f %.3f %.3f]",
+                name_.c_str(), arm_.c_str(), offset_, angle_, pitch_,
+                motion_mode_.c_str(), press_depth_, prepress_duration_, duration_,
                 axis_base_.x(), axis_base_.y(), axis_base_.z());
 }
 
@@ -166,10 +206,28 @@ ScrewMotionBase::ComputeResult ScrewMotionBase::compute(
     }
 
     const double elapsed = (time - start_time_).seconds();
-    const double t = std::clamp(elapsed, 0.0, duration_);
-    const double theta = dyros_math::cubic(t, 0.0, duration_, 0.0, angle_, 0.0, 0.0);
-    const double theta_dot = dyros_math::cubicDot(t, 0.0, duration_, 0.0, angle_, 0.0, 0.0);
-    const double progress = std::clamp(elapsed / duration_, 0.0, 1.0);
+    const bool press_mode = motion_mode_ == "press";
+    const double prepress_time = press_mode ? prepress_duration_ : 0.0;
+    const double total_duration = prepress_time + duration_;
+    const double screw_time = std::clamp(elapsed - prepress_time, 0.0, duration_);
+    const double theta =
+        dyros_math::cubic(screw_time, 0.0, duration_, 0.0, angle_, 0.0, 0.0);
+    const double theta_dot =
+        dyros_math::cubicDot(screw_time, 0.0, duration_, 0.0, angle_, 0.0, 0.0);
+    const double progress = std::clamp(elapsed / total_duration, 0.0, 1.0);
+
+    double press_scale = 0.0;
+    double press_scale_dot = 0.0;
+    if (press_mode)
+    {
+        const double ramp_time = std::clamp(elapsed, 0.0, prepress_duration_);
+        press_scale = dyros_math::cubic(
+            ramp_time, 0.0, prepress_duration_, 0.0, 1.0, 0.0, 0.0);
+        press_scale_dot = elapsed < prepress_duration_
+            ? dyros_math::cubicDot(
+                ramp_time, 0.0, prepress_duration_, 0.0, 1.0, 0.0, 0.0)
+            : 0.0;
+    }
 
     const Eigen::Matrix3d R_axis = force_base_z_axis_
         ? dyros_math::rotateWithZ(theta)
@@ -188,25 +246,35 @@ ScrewMotionBase::ComputeResult ScrewMotionBase::compute(
 
         const Eigen::Vector3d start_radius = start_pose.translation() - center_base;
         const double axial_displacement = pitch_ * theta / (2.0 * M_PI);
-        const Eigen::Vector3d p_des = center_base + R_axis * start_radius
-            + axis_base_ * axial_displacement;
+        const Eigen::Vector3d center_on_axis =
+            center_base + axis_base_ * axial_displacement;
+        const Eigen::Vector3d nominal_radius = R_axis * start_radius;
+        const Eigen::Vector3d p_nominal = center_on_axis + nominal_radius;
+        const Eigen::Vector3d inward_direction = -nominal_radius.normalized();
+        const Eigen::Vector3d p_control =
+            p_nominal + press_scale * press_depth_ * inward_direction;
         const Eigen::Matrix3d R_des = R_axis * start_pose.linear();
 
         Eigen::Affine3d T_des = Eigen::Affine3d::Identity();
         T_des.linear() = R_des;
-        T_des.translation() = p_des;
+        T_des.translation() = p_control;
 
         const Eigen::Vector3d omega_des = axis_base_ * theta_dot;
         const double axial_velocity = pitch_ * theta_dot / (2.0 * M_PI);
-        const Eigen::Vector3d v_des = omega_des.cross(p_des - center_base)
-            + axis_base_ * axial_velocity;
+        const Eigen::Vector3d control_radius = p_control - center_on_axis;
+        const Eigen::Vector3d v_des =
+            omega_des.cross(control_radius)
+            + axis_base_ * axial_velocity
+            + press_scale_dot * press_depth_ * inward_direction;
 
         ee_data.x_desired = T_des;
         ee_data.xdot_desired.setZero();
         ee_data.xdot_desired.head<3>() = v_des;
         ee_data.xdot_desired.tail<3>() = omega_des;
 
-        const double p_err = (p_des - ee_data.x.translation()).norm();
+        // The radial preload is intentional virtual penetration. Use the
+        // nominal path for completion when contact prevents reaching p_control.
+        const double p_err = (p_nominal - ee_data.x.translation()).norm();
         const double o_err = orientationError(R_des, ee_data.x.linear());
         desired_poses.push_back(affineToPoseMsg(T_des));
         position_errors.push_back(p_err);
@@ -222,7 +290,10 @@ ScrewMotionBase::ComputeResult ScrewMotionBase::compute(
 
     auto fb = std::make_shared<ActionT::Feedback>();
     fb->progress = progress;
-    fb->status_message = "Executing screw motion";
+    fb->status_message =
+        press_mode && elapsed < prepress_duration_
+            ? "Building radial preload"
+            : "Executing screw motion";
     fb->desired_poses = desired_poses;
     fb->position_errors = position_errors;
     fb->orientation_errors = orientation_errors;
@@ -230,6 +301,9 @@ ScrewMotionBase::ComputeResult ScrewMotionBase::compute(
 
     if (progress >= 1.0)
     {
+        // TODO: Add a post-screw sequence that releases radial contact, returns
+        // to the initial angular pose while preserving pitch displacement, and
+        // repeats the tighten/reset cycle N times. Until then, keep preload.
         if (all_reached) return ComputeResult::SUCCEEDED;
         result_error_code_ = 3;
         return ComputeResult::ABORTED;
