@@ -73,7 +73,7 @@ private:
     bool contact_torque_bias_set_{false};
     bool contact_detected_{false};
     int contact_count_{0};
-    int contact_debounce_count_{10};
+    int contact_debounce_count_{2};
     double contact_detection_start_time_{0.2};
 
 
