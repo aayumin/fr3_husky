@@ -23,7 +23,7 @@ def run_nut_tightening(
     nut_yaw=0.0,
     spanner_length = 0.1,
     rotation_angle = -60.0,
-    dist_offset=0.15,
+    dist_offset=0.05,
     radian=False,
     pos_tolerance=0.01,
     ori_tolerance=0.05,
@@ -32,11 +32,11 @@ def run_nut_tightening(
     if not rclpy.ok(): rclpy.init()
 
     DEFAULT_LEFT_POSE = {
-        "position": [0.55, 0.25, 0.75],
+        "position": [0.45, 0.25, 0.56],
         "rpy": [3.141, 0.0, 0.0],
     }
     DEFAULT_RIGHT_POSE = {
-        "position": [0.55, -0.25, 0.75],
+        "position": [0.45, -0.25, 0.56],
         "rpy": [3.141, 0.0, 0.0],
     }
 
@@ -65,7 +65,7 @@ def run_nut_tightening(
         right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + nut_yaw_r]
         right_position = [nut_position[0] - (dist_offset+spanner_length) * math.cos(nut_yaw_r), nut_position[1] - (dist_offset+spanner_length) * math.sin(nut_yaw_r), nut_position[2]]
     else: raise(f"not implemented for arm={arm}")
-    node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 5.0, pos_tolerance, ori_tolerance)
+    node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 10.0, pos_tolerance, ori_tolerance)
     is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
     if not is_success: return result
 
@@ -74,7 +74,7 @@ def run_nut_tightening(
     if arm == "left": left_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1]  - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
     elif arm == "right": right_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1] - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
     else: raise(f"not implemented for arm={arm}")
-    node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+    node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 10.0, pos_tolerance, ori_tolerance)
     is_success, result = send_goal_and_get_result(node, "Contact-guarded motion", arm)
     if not is_success: return result
 
@@ -105,7 +105,7 @@ def run_nut_tightening(
             right_position = [- dist_offset, 0.0, 0.0]  #  EE local frame
             right_rpy = [0.0, 0.0, 0.0]
         else: raise(f"not implemented for arm={arm}")
-        node = ContactGuardedDeltaMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+        node = ContactGuardedDeltaMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 10.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
         if not is_success: return result
 
@@ -137,7 +137,7 @@ def run_nut_tightening(
         print(f"right_rpy: {right_rpy}")
         print(f"nut_position: {nut_position}")
 
-        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 5.0, pos_tolerance, ori_tolerance)
+        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 10.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
         if not is_success: return result
 
@@ -146,7 +146,7 @@ def run_nut_tightening(
         if arm == "left": left_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1] - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
         elif arm == "right": right_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1] - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
         else: raise(f"not implemented for arm={arm}")
-        node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+        node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 10.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Contact-guarded motion", arm)
         if not is_success: return result
 
