@@ -279,14 +279,14 @@ ContactGuardedDeltaMotion::ComputeResult ContactGuardedDeltaMotion::compute(
         start_time_set_ = true;
     }
 
-    // if (isContactDetected(time))
-    // {
-    //     contact_detected_ = true;
-    //     result_error_code_ = 0;
-    //     fr3_model_updater_.haltCommands();
-    //     RCLCPP_WARN(node_->get_logger(), "[%s] stopped by contact guard", name_.c_str());
-    //     return ComputeResult::SUCCEEDED;
-    // }
+    if (isContactDetected(time))
+    {
+        contact_detected_ = true;
+        result_error_code_ = 0;
+        fr3_model_updater_.haltCommands();
+        RCLCPP_WARN(node_->get_logger(), "[%s] stopped by contact guard", name_.c_str());
+        return ComputeResult::SUCCEEDED;
+    }
 
     const double elapsed = (time - start_time_).seconds();
     const double s = std::clamp(elapsed / duration_, 0.0, 1.0);
