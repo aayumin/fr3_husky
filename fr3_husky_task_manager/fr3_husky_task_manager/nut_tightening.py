@@ -41,17 +41,15 @@ def run_nut_tightening(
 
     if radian: 
         nut_yaw_r = nut_yaw
-        nut_yaw_d = nut_yaw = nut_yaw / math.pi * 180
         rotation_angle_r = rotation_angle
         rotation_angle_d = rotation_angle / math.pi * 180
     else:
         nut_yaw_r = nut_yaw * math.pi / 180
-        nut_yaw_d = nut_yaw
         rotation_angle_r = rotation_angle * math.pi / 180
         rotation_angle_d = rotation_angle
 
     assert rotation_angle_d >= 60.0
-    MAX_REPEAT = 10
+    MAX_REPEAT = 5
 
 
     ## prepare
@@ -61,20 +59,19 @@ def run_nut_tightening(
     right_rpy = DEFAULT_RIGHT_POSE["rpy"] 
     if arm == "left":
         left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + nut_yaw_r]
-        left_position = [nut_position[0] - dist_offset * math.cos(nut_yaw_r), nut_position[1] - dist_offset * math.sin(nut_yaw_r), nut_position[2]]
+        left_position = [nut_position[0] - (dist_offset+spanner_length) * math.cos(nut_yaw_r), nut_position[1] - (dist_offset+spanner_length) * math.sin(nut_yaw_r), nut_position[2]]
     elif arm == "right":
         right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + nut_yaw_r]
-        right_position = [nut_position[0] - dist_offset * math.cos(nut_yaw_r), nut_position[1] - dist_offset * math.sin(nut_yaw_r), nut_position[2]]
+        right_position = [nut_position[0] - (dist_offset+spanner_length) * math.cos(nut_yaw_r), nut_position[1] - (dist_offset+spanner_length) * math.sin(nut_yaw_r), nut_position[2]]
     else: raise(f"not implemented for arm={arm}")
-
-    node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 8.0, pos_tolerance, ori_tolerance)
+    node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 5.0, pos_tolerance, ori_tolerance)
     is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
     if not is_success: return result
 
 
     ## approach
-    if arm == "left": left_position = nut_position
-    elif arm == "right": right_position = nut_position
+    if arm == "left": left_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1]  - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
+    elif arm == "right": right_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1] - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
     else: raise(f"not implemented for arm={arm}")
     node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
     is_success, result = send_goal_and_get_result(node, "Contact-guarded motion", arm)
@@ -114,28 +111,39 @@ def run_nut_tightening(
         left_rpy = DEFAULT_LEFT_POSE["rpy"] 
         right_position = DEFAULT_RIGHT_POSE["position"] 
         right_rpy = DEFAULT_RIGHT_POSE["rpy"] 
-        start_yaw_angle = nut_yaw_r + rotation_angle_r - math.pi / 6.0
+        nut_yaw_r = nut_yaw_r + rotation_angle_r - math.pi / 3.0
+
         if arm == "left":
-            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + start_yaw_angle]
-            left_position = [nut_position[0] - dist_offset * math.cos(start_yaw_angle), nut_position[1] - dist_offset * math.sin(start_yaw_angle), nut_position[2]]
+            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + nut_yaw_r]
+            left_position = [nut_position[0] - (dist_offset+spanner_length) * math.cos(nut_yaw_r), nut_position[1] - (dist_offset+spanner_length) * math.sin(nut_yaw_r), nut_position[2]]
         elif arm == "right":
-            right_rpy =  [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + start_yaw_angle]
-            right_position = [nut_position[0] - dist_offset * math.cos(start_yaw_angle), nut_position[1] - dist_offset * math.sin(start_yaw_angle), nut_position[2]]
+            right_rpy =  [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + nut_yaw_r]
+            right_position = [nut_position[0] - (dist_offset+spanner_length) * math.cos(nut_yaw_r), nut_position[1] - (dist_offset+spanner_length) * math.sin(nut_yaw_r), nut_position[2]]
         else: raise(f"not implemented for arm={arm}")
 
-        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 8.0, pos_tolerance, ori_tolerance)
+        print("=========================")
+        print(f"right_position: {right_position}")
+        print(f"right_rpy: {right_rpy}")
+        print(f"nut_position: {nut_position}")
+
+        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 5.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
         if not is_success: return result
 
 
         ## approach
-        if arm == "left": left_position = nut_position
-        elif arm == "right": right_position = nut_position
+        if arm == "left": left_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1] - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
+        elif arm == "right": right_position = [nut_position[0] - spanner_length * math.cos(nut_yaw_r), nut_position[1] - spanner_length * math.sin(nut_yaw_r), nut_position[2]]
         else: raise(f"not implemented for arm={arm}")
         node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Contact-guarded motion", arm)
         if not is_success: return result
 
+
+        print("-------------------------")
+        print(f"right_position: {right_position}")
+        print(f"right_rpy: {right_rpy}")
+        print(f"nut_position: {nut_position}")
 
 
 
