@@ -50,6 +50,8 @@ class FR3ModelUpdater final : public ModelUpdaterBase
                           const double speed = 0.1, 
                           const double force = 30.0, 
                           const std::pair<double, double> epsilon = std::make_pair<double, double>(0.08, 0.08));
+        Eigen::VectorXd getJointTorque(const std::string robot_name) {return torque_[robot_name];}
+    
 
     public:
         std::shared_ptr<drc::Manipulator::RobotData> robot_data_;
