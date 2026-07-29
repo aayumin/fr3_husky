@@ -110,7 +110,6 @@ void ContactGuardedMotion::onStart()
 
     for (const auto& robot_name : fr3_model_updater_.robot_names_) {
         start_joint_torque_[robot_name] = fr3_model_updater_.getJointTorque(robot_name);
-        contact_torque_threshold_[robot_name] = Eigen::VectorXd::Constant(start_joint_torque_[robot_name].size(), 8.0);
     }
 
 
@@ -124,8 +123,10 @@ void ContactGuardedMotion::onStart()
 
 
 
+
 bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
-{
+{   
+
     if (!contact_torque_bias_set_ || !start_time_set_) return false;
 
     const double elapsed = (time - start_time_).seconds();
@@ -137,15 +138,25 @@ bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
     double exceeded_value = 0.0;
     double exceeded_threshold = 0.0;
 
+    if (time.seconds() - last_torque_update_time_ >= 0.1) 
+    {
+        for (const auto& robot_name : fr3_model_updater_.robot_names_) 
+        {
+            start_joint_torque_[robot_name] = fr3_model_updater_.getJointTorque(robot_name);
+        }
+        
+        // RCLCPP_INFO(node_->get_logger(), "[%s] Periodic torque drift correction applied for all robots (elapsed: %.2fs)", name_.c_str(), elapsed);
+        last_torque_update_time_ = time.seconds(); 
+    }
 
     for (const auto& robot_name : fr3_model_updater_.robot_names_) 
     {
         const auto start_it = start_joint_torque_.find(robot_name);
-        const auto threshold_it = contact_torque_threshold_.find(robot_name);
-
-        bool is_error = false;
-        is_error = is_error || start_it == start_joint_torque_.end();
-        is_error = is_error || threshold_it == contact_torque_threshold_.end();
+        
+        const std::string jacobian_key = robot_name + "_fr3_hand_tcp";
+        const auto jacobian_it = fr3_model_updater_.J_.find(jacobian_key);
+        bool is_error = (start_it == start_joint_torque_.end()) || (jacobian_it == fr3_model_updater_.J_.end());
+        
         if (is_error) {
             result_error_code_ = 2;
             return false;
@@ -153,34 +164,43 @@ bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
 
         const Eigen::VectorXd current_joint_torque = fr3_model_updater_.getJointTorque(robot_name);
         const Eigen::VectorXd& start_joint_torque = start_it->second;
-        const Eigen::VectorXd& contact_torque_threshold = threshold_it->second;
 
-
-        is_error = is_error || current_joint_torque.size() != start_joint_torque.size();
-        is_error = is_error || contact_torque_threshold.size() != start_joint_torque.size();
-        if (is_error) {
+        if (current_joint_torque.size() != start_joint_torque.size()) {
             result_error_code_ = 2;
             return false;
         }
         
-
         const Eigen::VectorXd delta_torque = current_joint_torque - start_joint_torque;
 
-        for (int i = 0; i < delta_torque.size(); ++i)
-        {
-            const double abs_tau = std::abs(delta_torque[i]);
-            const double threshold = contact_torque_threshold[i];
+        const Eigen::Matrix<double, 6, FR3_DOF>& J = jacobian_it->second;
+        Eigen::MatrixXd JT = J.transpose(); // J^T 형태: (FR3_DOF x 6)
 
-            if (abs_tau > threshold)
+        Eigen::Vector6d F_ext = JT.completeOrthogonalDecomposition().solve(delta_torque);
+        
+
+        Eigen::Vector6d contact_wrench_threshold;
+        contact_wrench_threshold << 0.8, 0.8, 0.8,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
+                                     0.3, 0.3, 0.3;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
+        // contact_wrench_threshold << 10.0, 10.0, 10.0,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
+        //                              2.5, 2.5, 2.5;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
+
+        for (int i = 0; i < 6; ++i)
+        {
+            const double abs_wrench = std::abs(F_ext[i]);
+            const double threshold = contact_wrench_threshold[i];
+
+
+            if (abs_wrench > threshold)
             {
                 threshold_exceeded = true;
                 exceeded_ee_name = robot_name;
                 exceeded_idx = i;
-                exceeded_value = delta_torque[i];
+                exceeded_value = F_ext[i];
                 exceeded_threshold = threshold;
                 break;
             }
         }
+
 
         if (threshold_exceeded) break;
     }
@@ -188,13 +208,16 @@ bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
     contact_count_ = threshold_exceeded ? contact_count_ + 1 : 0;
     if (contact_count_ >= contact_debounce_count_)
     {
-        RCLCPP_WARN(node_->get_logger(), "[%s] contact detected: ee_name=%s joint=%d delta_tau=%.3f threshold=%.3f", name_.c_str(), exceeded_ee_name.c_str(), exceeded_idx, exceeded_value, exceeded_threshold);
+        std::string axis_name[] = {"Fx", "Fy", "Fz", "Mx", "My", "Mz"};
+        RCLCPP_WARN(node_->get_logger(), 
+                    "[%s] Task Wrench Contact Detected! ee_name=%s, axis=%s, value=%.3f, threshold=%.3f", 
+                    name_.c_str(), exceeded_ee_name.c_str(), axis_name[exceeded_idx].c_str(), 
+                    exceeded_value, exceeded_threshold);
         return true;
     }
 
     return false;
 }
-
 
 
 Eigen::Affine3d ContactGuardedMotion::poseMsgToAffine(const geometry_msgs::msg::Pose& msg)

@@ -68,11 +68,11 @@ private:
 
     // for contact detection
     std::map<std::string, Eigen::VectorXd> start_joint_torque_;
-    std::map<std::string, Eigen::VectorXd> contact_torque_threshold_;
+    double last_torque_update_time_ = 0.0;
     bool contact_torque_bias_set_{false};
     bool contact_detected_{false};
     int contact_count_{0};
-    int contact_debounce_count_{3};
+    int contact_debounce_count_{10};
     double contact_detection_start_time_{0.2};
 
     
