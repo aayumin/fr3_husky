@@ -321,21 +321,16 @@ ContactGuardedMotion::ComputeResult ContactGuardedMotion::compute(
         if (p_err > pos_tolerance_ || o_err > ori_tolerance_) all_reached = false;
     }
 
-    std::cout << " ============ 1 ============ " << std::endl;
 
     fr3_model_updater_.robot_controller_->CLIKStep(ee_data_, fr3_model_updater_.qdot_desired_total_);
 
-    std::cout << " ============ 2 ============ " << std::endl;
     fr3_model_updater_.q_desired_total_ = fr3_model_updater_.q_total_ +
                                                                 fr3_model_updater_.dt_ * fr3_model_updater_.qdot_desired_total_;
     
-    std::cout << " ============ 3 ============ " << std::endl;
     fr3_model_updater_.torque_desired_total_ = fr3_model_updater_.robot_controller_->moveJointTorqueStep(fr3_model_updater_.q_desired_total_,
                                                                                                             fr3_model_updater_.qdot_desired_total_,
                                                                                                             false);
 
-
-    std::cout << " ============ 4 ============ " << std::endl;
     fr3_model_updater_.writeCommand(fr3_model_updater_.torque_desired_total_ - fr3_model_updater_.g_total_); // robot_controller automatically add gravity force
 
 
