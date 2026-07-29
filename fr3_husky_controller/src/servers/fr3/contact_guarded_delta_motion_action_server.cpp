@@ -113,7 +113,7 @@ void ContactGuardedDeltaMotion::onStart()
 
     for (const auto& robot_name : fr3_model_updater_.robot_names_) {
         start_joint_torque_[robot_name] = fr3_model_updater_.getJointTorque(robot_name);
-        contact_torque_threshold_[robot_name] = Eigen::VectorXd::Constant(start_joint_torque_[robot_name].size(), 8.0);
+        contact_torque_threshold_[robot_name] = Eigen::VectorXd::Constant(start_joint_torque_[robot_name].size(), 3.0);
     }
 
 
@@ -149,6 +149,8 @@ bool ContactGuardedDeltaMotion::isContactDetected(const rclcpp::Time& time)
 
     for (const auto& robot_name : fr3_model_updater_.robot_names_) 
     {
+
+
         const auto start_it = start_joint_torque_.find(robot_name);
         const auto threshold_it = contact_torque_threshold_.find(robot_name);
 
@@ -174,11 +176,34 @@ bool ContactGuardedDeltaMotion::isContactDetected(const rclcpp::Time& time)
         
 
         const Eigen::VectorXd delta_torque = current_joint_torque - start_joint_torque;
+        
+
+        // update start_joint_torque periodically to account for drift in torque readings
+        if (time.seconds() - last_torque_update_time_ >= 0.1) 
+        {
+            for (const auto& robot_name : fr3_model_updater_.robot_names_) 
+            {
+                start_joint_torque_[robot_name] = fr3_model_updater_.getJointTorque(robot_name);
+            }
+            
+            for (int i = 0; i < delta_torque.size(); ++i) std::cout << delta_torque[i] << ", " ;
+             std::cout << std::endl;
+
+            
+            last_torque_update_time_ = time.seconds(); 
+        }
+
+
+        // std::cout << "=========================" << std::endl;
+        // std::cout << "start_joint_torque: " << start_joint_torque.transpose() << std::endl;
+        // std::cout << "current_joint_torque: " << current_joint_torque.transpose() << std::endl;
+        // std::cout << "delta_torque: " << delta_torque.transpose() << std::endl;
 
         for (int i = 0; i < delta_torque.size(); ++i)
         {
             const double abs_tau = std::abs(delta_torque[i]);
             const double threshold = contact_torque_threshold[i];
+
 
             if (abs_tau > threshold)
             {
@@ -268,6 +293,8 @@ ContactGuardedDeltaMotion::ComputeResult ContactGuardedDeltaMotion::compute(
 {
     for (auto& [ee_name, ee_data] : ee_data_)
     {
+        // std::cout << fr3_model_updater_.torque_[ee_name] << std::endl;
+
         ee_data.x = fr3_model_updater_.robot_data_->getPose(ee_name);
         ee_data.xdot = fr3_model_updater_.robot_data_->getVelocity(ee_name);
         ee_data.xddot.setZero();
@@ -281,6 +308,8 @@ ContactGuardedDeltaMotion::ComputeResult ContactGuardedDeltaMotion::compute(
 
     if (isContactDetected(time))
     {
+
+
         contact_detected_ = true;
         result_error_code_ = 0;
         fr3_model_updater_.haltCommands();
