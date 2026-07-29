@@ -21,9 +21,10 @@ def run_nut_tightening(
     arm="right",
     nut_position=None,
     nut_yaw=0.0,
-    rotation_angle = 0.0,
-    dist_offset=0.1,
-    degree=True,
+    spanner_length = 0.08,
+    rotation_angle = 60.0,
+    dist_offset=0.15,
+    radian=False,
     pos_tolerance=0.01,
     ori_tolerance=0.05,
 ):
@@ -31,35 +32,98 @@ def run_nut_tightening(
 
     DEFAULT_LEFT_POSE = {
         "position": [0.55, 0.25, 0.75],
-        "rpy": [3.141, 0.0, 0.52],
+        "rpy": [3.141, 0.0, 0.0],
     }
     DEFAULT_RIGHT_POSE = {
         "position": [0.55, -0.25, 0.75],
-        "rpy": [3.141, 0.0, -0.52],
+        "rpy": [3.141, 0.0, 0.0],
     }
-    if degree: 
-        nut_yaw = nut_yaw * math.pi / 180
-        rotation_angle = rotation_angle * math.pi / 180
-    if abs(rotation_angle) < math.pi / 3.0: rotation_angle = math.pi / 3.0  # set default rotation angle
 
+    if radian: 
+        nut_yaw_r = nut_yaw
+        nut_yaw_d = nut_yaw = nut_yaw / math.pi * 180
+        rotation_angle_r = rotation_angle
+        rotation_angle_d = rotation_angle / math.pi * 180
+    else:
+        nut_yaw_r = nut_yaw * math.pi / 180
+        nut_yaw_d = nut_yaw
+        rotation_angle_r = rotation_angle * math.pi / 180
+        rotation_angle_d = rotation_angle
+
+    assert rotation_angle_d >= 60.0
     MAX_REPEAT = 10
 
+
+    ## prepare
+    left_position = DEFAULT_LEFT_POSE["position"] 
+    left_rpy = DEFAULT_LEFT_POSE["rpy"] 
+    right_position = DEFAULT_RIGHT_POSE["position"] 
+    right_rpy = DEFAULT_RIGHT_POSE["rpy"] 
+    if arm == "left":
+        left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + nut_yaw_r]
+        left_position = [nut_position[0] - dist_offset * math.cos(nut_yaw_r), nut_position[1] - dist_offset * math.sin(nut_yaw_r), nut_position[2]]
+    elif arm == "right":
+        right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + nut_yaw_r]
+        right_position = [nut_position[0] - dist_offset * math.cos(nut_yaw_r), nut_position[1] - dist_offset * math.sin(nut_yaw_r), nut_position[2]]
+    else: raise(f"not implemented for arm={arm}")
+
+    node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 8.0, pos_tolerance, ori_tolerance)
+    is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
+    if not is_success: return result
+
+
+    ## approach
+    if arm == "left": left_position = nut_position
+    elif arm == "right": right_position = nut_position
+    else: raise(f"not implemented for arm={arm}")
+    node = ContactGuardedMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+    is_success, result = send_goal_and_get_result(node, "Contact-guarded motion", arm)
+    if not is_success: return result
+
+
+
     for idx in range(MAX_REPEAT):
+
+        ## rotate and tightening the nut
+        try:
+            result = run_screw_motion(arm, offset=spanner_length, angle = rotation_angle_d, duration = rotation_angle_d / 10.0)
+        except:
+            return "screw motion failed"
+        finally:
+            if not rclpy.ok(): rclpy.init()
+
+
+        ## backward
+        if arm == "left":
+            left_position = [- dist_offset, 0.0, 0.0]  #  EE local frame
+            left_rpy = [0.0, 0.0, 0.0]
+        elif arm == "right":
+            right_position = [- dist_offset, 0.0, 0.0]  #  EE local frame
+            right_rpy = [0.0, 0.0, 0.0]
+        else: raise(f"not implemented for arm={arm}")
+        node = ContactGuardedDeltaMotionClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+        is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
+        if not is_success: return result
+
+
+        if idx == MAX_REPEAT -1: break
+
 
         ## prepare
         left_position = DEFAULT_LEFT_POSE["position"] 
         left_rpy = DEFAULT_LEFT_POSE["rpy"] 
         right_position = DEFAULT_RIGHT_POSE["position"] 
         right_rpy = DEFAULT_RIGHT_POSE["rpy"] 
+        start_yaw_angle = nut_yaw_r + rotation_angle_r - math.pi / 6.0
         if arm == "left":
-            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + nut_yaw]
-            left_position = [nut_position[0] - dist_offset * math.cos(nut_yaw), nut_position[1] - dist_offset * math.sin(nut_yaw), nut_position[2]]
+            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + start_yaw_angle]
+            left_position = [nut_position[0] - dist_offset * math.cos(start_yaw_angle), nut_position[1] - dist_offset * math.sin(start_yaw_angle), nut_position[2]]
         elif arm == "right":
-            right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + nut_yaw]
-            right_position = [nut_position[0] - dist_offset * math.cos(nut_yaw), nut_position[1] - dist_offset * math.sin(nut_yaw), nut_position[2]]
+            right_rpy =  [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + start_yaw_angle]
+            right_position = [nut_position[0] - dist_offset * math.cos(start_yaw_angle), nut_position[1] - dist_offset * math.sin(start_yaw_angle), nut_position[2]]
         else: raise(f"not implemented for arm={arm}")
 
-        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 3.0, pos_tolerance, ori_tolerance)
+        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 8.0, pos_tolerance, ori_tolerance)
         is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
         if not is_success: return result
 
@@ -74,28 +138,7 @@ def run_nut_tightening(
 
 
 
-        ## rotate and tightening the nut
-        try:
-            result = run_screw_motion(arm, offset=0.1, angle = 90.0, duration = 10.0)
-        except:
-            return "screw motion failed"
-        finally:
-            if not rclpy.ok(): rclpy.init()
 
-
-        ## backward
-        if arm == "left":
-            left_position = [nut_position[0] - dist_offset * math.cos(rotation_angle), nut_position[1] - dist_offset * math.sin(rotation_angle), nut_position[2]]
-            left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + rotation_angle]
-        elif arm == "right":
-            right_position = [nut_position[0] - dist_offset * math.cos(rotation_angle), nut_position[1] - dist_offset * math.sin(rotation_angle), nut_position[2]]
-            right_rpy = [DEFAULT_RIGHT_POSE["rpy"][0], DEFAULT_RIGHT_POSE["rpy"][1], DEFAULT_RIGHT_POSE["rpy"][2] + rotation_angle]
-        else: raise(f"not implemented for arm={arm}")
-        
-        node = TaskSpaceMoveClient(arm, left_position, left_rpy, right_position, right_rpy, 1.0, pos_tolerance, ori_tolerance)
-        is_success, result = send_goal_and_get_result(node, "Task-space move", arm)
-        if not is_success: return result
-        nut_yaw = rotation_angle % math.pi / 3.0
 
     result = f"Successfully executed nut tightening motion [{MAX_REPEAT} times]"
     return result
@@ -149,12 +192,17 @@ def main(args=None):
         default=0.0,
     )
     parser.add_argument(
-        "--rotation-angle",
+        "--spanner-length",
         type=float,
-        default=0.0,
+        default=0.08,
     )
     parser.add_argument(
-        "--degree",
+        "--rotation-angle",
+        type=float,
+        default=60.0,
+    )
+    parser.add_argument(
+        "--radian",
         action="store_true",
     )
     parser.add_argument(
@@ -176,8 +224,9 @@ def main(args=None):
         arm=parsed_args.arm,
         nut_position=parsed_args.nut_position,
         nut_yaw=parsed_args.nut_yaw,
+        spanner_length=parsed_args.spanner_length,
         rotation_angle=parsed_args.rotation_angle,
-        degree=parsed_args.degree,
+        radian=parsed_args.radian,
         pos_tolerance=parsed_args.pos_tolerance,
         ori_tolerance=parsed_args.ori_tolerance,
     )

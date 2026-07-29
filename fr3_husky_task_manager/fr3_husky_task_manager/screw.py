@@ -125,6 +125,8 @@ class ScrewMotionClient(Node):
             f"mode={mode}, press_depth={press_depth:.4f} m, prepress_duration={prepress_duration:.3f} s, duration={duration:.3f} s"
         )
 
+
+
         send_goal_future = self._client.send_goal_async(
             goal,
             feedback_callback=self.feedback_callback,
@@ -158,11 +160,11 @@ class ScrewMotionClient(Node):
         feedback = feedback_msg.feedback
         max_pos_error = max(feedback.position_errors) if feedback.position_errors else 0.0
         max_ori_error = max(feedback.orientation_errors) if feedback.orientation_errors else 0.0
-        self.get_logger().info(
-            f"Feedback - progress: {feedback.progress:.2f}, "
-            f"pos_error: {max_pos_error:.4f}, ori_error: {max_ori_error:.4f}, "
-            f"status: {feedback.status_message}"
-        )
+        # self.get_logger().info(
+        #     f"Feedback - progress: {feedback.progress:.2f}, "
+        #     f"pos_error: {max_pos_error:.4f}, ori_error: {max_ori_error:.4f}, "
+        #     f"status: {feedback.status_message}"
+        # )
 
     def cancel_goal(self):
         if self._goal_handle is None:
