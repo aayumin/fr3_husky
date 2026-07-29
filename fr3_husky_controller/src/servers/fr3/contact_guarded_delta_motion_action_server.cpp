@@ -5,7 +5,9 @@
 #include <chrono>
 #include <stdexcept>
 #include <string>
+#include <fstream> 
 
+std::ofstream temp_file_; 
 
 namespace fr3_husky_controller::servers::fr3
 {
@@ -64,7 +66,10 @@ bool ContactGuardedDeltaMotion::acceptGoal(const ActionT::Goal& goal)
 }
 
 void ContactGuardedDeltaMotion::onGoalAccepted(const ActionT::Goal& goal)
-{
+{   
+    temp_file_.open("temp_f.txt"); 
+    if (temp_file_.is_open()) temp_file_ << "Fx,Fy,Fz,Mx,My,Mz\n";
+
     ee_names_ = goal.ee_names;
     target_delta_poses_.clear();
 
@@ -187,10 +192,13 @@ bool ContactGuardedDeltaMotion::isContactDetected(const rclcpp::Time& time)
 
         Eigen::Vector6d F_ext = JT.completeOrthogonalDecomposition().solve(delta_torque);
         
+        // for debugging
+        if (temp_file_.is_open()) temp_file_ << F_ext[0] << ","<< F_ext[1] << ","<< F_ext[2] << ","<< F_ext[3] << ","<< F_ext[4] << ","<< F_ext[5] << "\n"; 
 
+                
         Eigen::Vector6d contact_wrench_threshold;
-        contact_wrench_threshold << 0.8, 0.8, 0.8,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
-                                     0.3, 0.3, 0.3;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
+        contact_wrench_threshold <<3.5, 3.5, 3.5,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
+                                     0.8, 0.8, 0.8;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
         // contact_wrench_threshold << 10.0, 10.0, 10.0,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
         //                              2.5, 2.5, 2.5;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
 
@@ -379,6 +387,8 @@ ContactGuardedDeltaMotion::ComputeResult ContactGuardedDeltaMotion::compute(
 
 void ContactGuardedDeltaMotion::onStop(StopReason reason)
 {
+    if (temp_file_.is_open()) temp_file_.close();
+
     if (reason != StopReason::SUCCEEDED)
         fr3_model_updater_.haltCommands();
 

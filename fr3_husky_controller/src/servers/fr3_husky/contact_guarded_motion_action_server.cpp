@@ -178,8 +178,8 @@ bool ContactGuardedMotion::isContactDetected(const rclcpp::Time& time)
         
 
         Eigen::Vector6d contact_wrench_threshold;
-        contact_wrench_threshold << 0.8, 0.8, 0.8,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
-                                     0.3, 0.3, 0.3;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
+        contact_wrench_threshold <<3.5, 3.5, 3.5,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
+                                     0.8, 0.8, 0.8;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
         // contact_wrench_threshold << 10.0, 10.0, 10.0,  // 힘 임계값: X, Y, Z축 (단위: Newtons, 약 1.5kg의 힘)
         //                              2.5, 2.5, 2.5;  // 모멘트 임계값: X, Y, Z축 (단위: Nm)
 
