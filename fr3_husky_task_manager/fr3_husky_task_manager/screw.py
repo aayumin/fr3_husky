@@ -31,10 +31,15 @@ class ScrewMotionClient(Node):
         duration=10.0,
         pos_tolerance=0.01,
         ori_tolerance=0.05,
+        controller="fr3_husky",
     ):
         super().__init__("screw_motion_client")
 
-        self._action_name = "/fr3_husky_screw_z" if use_z_axis else "/fr3_husky_screw"
+        if controller not in ("fr3_husky", "fr3"):
+            raise ValueError("controller must be one of: fr3_husky, fr3")
+        action_prefix = "fr3_husky" if controller == "fr3_husky" else "fr3"
+        action_suffix = "screw_z" if use_z_axis else "screw"
+        self._action_name = f"/{action_prefix}_{action_suffix}"
         self._client = ActionClient(self, ScrewMotion, self._action_name)
 
         self._goal_handle = None
@@ -187,12 +192,14 @@ def run_screw_motion(
     duration=10.0,
     pos_tolerance=0.01,
     ori_tolerance=0.05,
+    controller="fr3_husky",
 ):
     if not rclpy.ok():
         rclpy.init()
 
     node = ScrewMotionClient(
         arm=arm,
+        controller=controller,
         use_z_axis=use_z_axis,
         axis_base=axis_base,
         center_direction_ee=center_direction_ee,
@@ -236,6 +243,12 @@ def main(args=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--arm", choices=["left", "right", "both"], default="right")
+    parser.add_argument(
+        "--controller",
+        choices=["fr3_husky", "fr3"],
+        default="fr3_husky",
+        help="Controller action-server group to use.",
+    )
     parser.add_argument(
         "--server",
         choices=["screw_z", "screw"],
@@ -289,6 +302,7 @@ def main(args=None):
 
     result = run_screw_motion(
         arm=parsed_args.arm,
+        controller=parsed_args.controller,
         use_z_axis=(parsed_args.server == "screw_z"),
         axis_base=parsed_args.axis_base,
         center_direction_ee=parsed_args.center_direction_ee,

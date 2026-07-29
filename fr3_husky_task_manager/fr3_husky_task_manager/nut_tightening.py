@@ -21,12 +21,13 @@ def run_nut_tightening(
     arm="right",
     nut_position=None,
     nut_yaw=0.0,
-    spanner_length = 0.08,
-    rotation_angle = 60.0,
+    spanner_length = 0.1,
+    rotation_angle = -60.0,
     dist_offset=0.15,
     radian=False,
     pos_tolerance=0.01,
     ori_tolerance=0.05,
+    controller="fr3",
 ):
     if not rclpy.ok(): rclpy.init()
 
@@ -48,7 +49,7 @@ def run_nut_tightening(
         rotation_angle_r = rotation_angle * math.pi / 180
         rotation_angle_d = rotation_angle
 
-    assert rotation_angle_d >= 60.0
+    assert abs(rotation_angle_d) >= 60.0
     MAX_REPEAT = 5
 
 
@@ -83,7 +84,13 @@ def run_nut_tightening(
 
         ## rotate and tightening the nut
         try:
-            result = run_screw_motion(arm, offset=spanner_length, angle = rotation_angle_d, duration = rotation_angle_d / 10.0)
+            result = run_screw_motion(
+                arm,
+                offset=spanner_length,
+                angle=rotation_angle_d,
+                duration=abs(rotation_angle_d) / 10.0,
+                controller=controller,
+            )
         except:
             return "screw motion failed"
         finally:
@@ -111,7 +118,11 @@ def run_nut_tightening(
         left_rpy = DEFAULT_LEFT_POSE["rpy"] 
         right_position = DEFAULT_RIGHT_POSE["position"] 
         right_rpy = DEFAULT_RIGHT_POSE["rpy"] 
-        nut_yaw_r = nut_yaw_r + rotation_angle_r - math.pi / 3.0
+        nut_yaw_r = (
+            nut_yaw_r
+            + rotation_angle_r
+            - math.copysign(math.pi / 3.0, rotation_angle_r)
+        )
 
         if arm == "left":
             left_rpy = [DEFAULT_LEFT_POSE["rpy"][0], DEFAULT_LEFT_POSE["rpy"][1], DEFAULT_LEFT_POSE["rpy"][2] + nut_yaw_r]
@@ -187,6 +198,12 @@ def main(args=None):
         help="Target end-effector.",
     )
     parser.add_argument(
+        "--controller",
+        choices=["fr3", "fr3_husky"],
+        default="fr3",
+        help="Controller action-server group used for screw motion.",
+    )
+    parser.add_argument(
         "--nut-position",
         type=float,
         nargs=3,
@@ -202,12 +219,12 @@ def main(args=None):
     parser.add_argument(
         "--spanner-length",
         type=float,
-        default=0.08,
+        default=0.1,
     )
     parser.add_argument(
         "--rotation-angle",
         type=float,
-        default=60.0,
+        default=-60.0,
     )
     parser.add_argument(
         "--radian",
@@ -237,6 +254,7 @@ def main(args=None):
         radian=parsed_args.radian,
         pos_tolerance=parsed_args.pos_tolerance,
         ori_tolerance=parsed_args.ori_tolerance,
+        controller=parsed_args.controller,
     )
 
 
