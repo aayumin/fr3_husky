@@ -147,6 +147,7 @@ add_library(${PROJECT_NAME} SHARED
 
     src/servers/fr3/task_space_move_action_server.cpp
     src/servers/fr3/task_space_delta_move_action_server.cpp
+    src/servers/fr3/screw_motion_action_server.cpp
     src/servers/fr3/gripper_command_action_server.cpp
     src/servers/fr3/apple_vision_pro_action_server.cpp
     src/servers/fr3/keyboard_move_action_server.cpp
