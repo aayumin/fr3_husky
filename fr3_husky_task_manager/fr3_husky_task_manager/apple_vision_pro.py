@@ -117,19 +117,23 @@ def run_apple_vision_pro(disable=False, yaw_only=False, left_off=False, right_of
     node = AppleVisionProClient(disable=disable, yaw_only=yaw_only, left_off=left_off, right_off=right_off)
 
     try:
-        ok = node.run()
+        return node.run()
     finally:
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 
-    raise SystemExit(0 if ok else 1)
-
 
 def main(args=None):
     del args
     cli_args = parse_args()
-    run_apple_vision_pro(disable=cli_args.disable, yaw_only=cli_args.yaw_only, left_off=cli_args.left_off, right_off=cli_args.right_off)
+    ok = run_apple_vision_pro(
+        disable=cli_args.disable,
+        yaw_only=cli_args.yaw_only,
+        left_off=cli_args.left_off,
+        right_off=cli_args.right_off,
+    )
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == '__main__':

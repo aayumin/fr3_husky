@@ -72,12 +72,13 @@ def run_husky_pedal(enable=True):
     node = HuskyPedalClient(enable=enable)
 
     try:
-        return node.send_goal_and_wait()
+        result = node.send_goal_and_wait()
+        return result is not None and result.is_completed
     except KeyboardInterrupt:
         cancel_future = node.cancel_goal()
         if cancel_future is not None:
             rclpy.spin_until_future_complete(node, cancel_future, timeout_sec=2.0)
-        return None
+        return False
     finally:
         node.destroy_node()
         if rclpy.ok():
