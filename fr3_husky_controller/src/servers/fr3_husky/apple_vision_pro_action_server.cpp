@@ -124,6 +124,8 @@ AppleVisionPro::AppleVisionPro(const std::string& name, const NodePtr& node, Mod
     target_raw_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_raw_pose_right", 10);
     target_smooth_pose_l_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_smooth_pose_left", 10);
     target_smooth_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/target_smooth_pose_right", 10);
+    cur_pose_l_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/cur_pose_left", 10);
+    cur_pose_r_pub_  = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/debug/cur_pose_right", 10);
     
 
     RCLCPP_INFO(node_->get_logger(), "[%s] AppleVisionPro created", name_.c_str());
@@ -643,6 +645,9 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     ee_data_[left_controller_ee_name_].x_desired = smooth_target;
                     ee_data_[left_controller_ee_name_].xdot_desired = target_vel;
 
+                    // for data collecting.
+                    target_smooth_pose_l_pub_->publish(affineToPoseStamped(smooth_target, "base_link"));
+                    cur_pose_l_pub_->publish(affineToPoseStamped(current_ee, "base_link"));
 
                 }
             }
@@ -796,12 +801,33 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
                     prev_target_right_ = smooth_target;
                     ee_data_[right_controller_ee_name_].x_desired = smooth_target;
                     ee_data_[right_controller_ee_name_].xdot_desired = target_vel;
+                    
 
+                    // for data collecting.
+                    target_smooth_pose_r_pub_->publish(affineToPoseStamped(smooth_target, "base_link"));
+                    cur_pose_r_pub_->publish(affineToPoseStamped(current_ee, "base_link"));
 
                 }
             }
         }
     }
+
+    // x_desired (position, rotation_axis),  gripper_value (0 or 1)
+    // (1) ee_data_[right_controller_ee_name_].x_desired
+
+    // observation.
+    // fr3_husky_model_updater_.
+    // (1) imgs
+    // (2-a) ee_data_[right_controller_ee_name_].x
+    // (2-b) fr3_husky_model_updater.x_m_, fr3_husky_model_updater.xdot_m_
+    // (3) gripper
+    // (4) fr3_husky_model_updater.q_
+    // (5) fr3_husky_model_updater.qdot_
+
+    // topic /aaa/image_raw
+    // topic /joint_states
+    // publish topic for current EE pose and desired_pose.
+
 
     bool is_qp_solved = true;
     std::string time_verbose = "";
@@ -967,6 +993,27 @@ AppleVisionPro::ComputeResult AppleVisionPro::compute(const rclcpp::Time& time, 
     return ComputeResult::RUNNING;
 }
 
+
+geometry_msgs::msg::PoseStamped AppleVisionPro::affineToPoseStamped(const Eigen::Affine3d& T, const std::string& frame_id)
+{
+    geometry_msgs::msg::PoseStamped msg;
+    msg.header.stamp = node_->now();
+    msg.header.frame_id = frame_id;
+
+    msg.pose.position.x = T.translation().x();
+    msg.pose.position.y = T.translation().y();
+    msg.pose.position.z = T.translation().z();
+
+    Eigen::Quaterniond q(T.linear());
+    q.normalize();
+
+    msg.pose.orientation.x = q.x();
+    msg.pose.orientation.y = q.y();
+    msg.pose.orientation.z = q.z();
+    msg.pose.orientation.w = q.w();
+
+    return msg;
+}
 
 double AppleVisionPro::rotationDiff(const Eigen::Matrix3d& R_a, const Eigen::Matrix3d& R_b)
 {

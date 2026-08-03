@@ -78,10 +78,12 @@ private:
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_raw_pose_l_pub_, target_raw_pose_r_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_smooth_pose_l_pub_, target_smooth_pose_r_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr cur_pose_l_pub_, cur_pose_r_pub_;
 
     void subPoseCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg);
     void subLGestureCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
     void subRGestureCallback(const std_msgs::msg::Int32MultiArray::SharedPtr msg);
+    geometry_msgs::msg::PoseStamped affineToPoseStamped(const Eigen::Affine3d& T, const std::string& frame_id);
 
     // AVP controller state data
     std::vector<Eigen::Affine3d> controller_poses_;      // left, right, head

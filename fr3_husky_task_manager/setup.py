@@ -37,6 +37,7 @@ setup(
             'gripper_move = fr3_husky_task_manager.gripper_move:main',
             'log = fr3_husky_task_manager.live_log:main',
             'image = fr3_husky_task_manager.image_streaming:main',
+            'check1 = fr3_husky_task_manager.check1:main',
         ],
     },
 )
