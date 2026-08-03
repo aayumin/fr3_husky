@@ -91,8 +91,8 @@ def run_nut_tightening(
                 duration=abs(rotation_angle_d) / 10.0,
                 controller=controller,
             )
-        except:
-            return "screw motion failed"
+        except Exception as e:
+            return f"Screw motion failed: {e}"
         finally:
             if not rclpy.ok(): rclpy.init()
 

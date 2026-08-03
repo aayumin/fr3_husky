@@ -217,7 +217,7 @@ def run_screw_motion(
 
     try:
         node.send_goal_and_wait()
-        result = f"Screw motion completed successfully. [arm:{arm}]"
+        return True
     except KeyboardInterrupt:
         cancel_future = node.cancel_goal()
         if cancel_future is not None:
@@ -227,15 +227,13 @@ def run_screw_motion(
                 rclpy.spin_until_future_complete(node, node._result_future, timeout_sec=5.0)
             except KeyboardInterrupt:
                 pass
-        result = f"Screw motion interrupted and cancelled. [arm:{arm}]"
+        raise RuntimeError("Screw motion interrupted and cancelled.")
     except Exception as exc:
-        result = f"Screw motion failed: {exc}. [arm:{arm}]"
+        raise RuntimeError(str(exc)) from exc
     finally:
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
-
-    return result
 
 
 def main(args=None):
