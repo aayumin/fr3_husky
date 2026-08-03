@@ -391,7 +391,7 @@ def main():
     pkl_folder = Path(PKL_DIR)
     
     # 1. 정규표현식을 통해 'realtime_ros_data_*.pkl' 형태를 가진 파일들을 전부 긁어와 정렬
-    pkl_files = sorted([p for p in pkl_folder.glob("realtime_ros_data_*.pkl")])
+    pkl_files = sorted([p for p in pkl_folder.glob("pkl_data/realtime_ros_data_*.pkl")])
     
     if not pkl_files:
         print(f"❌ 에러: [{pkl_folder.resolve()}] 경로에 'realtime_ros_data_*.pkl' 파일이 하나도 없습니다.")
