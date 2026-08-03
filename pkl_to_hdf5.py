@@ -348,7 +348,7 @@ def write_robomimic_hdf5_multi(out_path, demo_list):
                         }
                     }
                 },
-                "robots": ["Franka"],
+                "robots": ["Panda"],
                 "camera_depths": False,
                 "camera_heights": int(IMAGE_SIZE),
                 "camera_widths": int(IMAGE_SIZE),
