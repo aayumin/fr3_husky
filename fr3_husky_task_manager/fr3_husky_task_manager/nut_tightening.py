@@ -17,6 +17,9 @@ from fr3_husky_task_manager.task_space_move  import TaskSpaceMoveClient
 from fr3_husky_task_manager.screw import ScrewMotionClient, run_screw_motion
 
 
+DEFAULT_NUT_POSITION = [0.56519, -0.194073, 0.485588]
+
+
 def run_nut_tightening(
     arm="right",
     nut_position=None,
@@ -30,6 +33,8 @@ def run_nut_tightening(
     controller="fr3",
 ):
     if not rclpy.ok(): rclpy.init()
+    if nut_position is None:
+        nut_position = DEFAULT_NUT_POSITION.copy()
 
     DEFAULT_LEFT_POSE = {
         "position": [0.45, 0.25, 0.56],
@@ -207,9 +212,9 @@ def main(args=None):
         "--nut-position",
         type=float,
         nargs=3,
-        required=True,
+        default=DEFAULT_NUT_POSITION,
         metavar=("X", "Y", "Z"),
-        help="Target nut position",
+        help="Target nut position (default: configured nut center).",
     )
     parser.add_argument(
         "--nut-yaw",
