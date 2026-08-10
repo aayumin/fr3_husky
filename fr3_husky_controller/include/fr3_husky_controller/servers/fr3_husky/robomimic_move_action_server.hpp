@@ -1,8 +1,8 @@
 #pragma once
 
-#include <atomic>
 #include <chrono>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -46,27 +46,50 @@ public:
     bool allowPreemption() const override { return true; }
 
 private:
+    enum class ArmMode
+    {
+        LEFT,
+        RIGHT,
+        DUAL
+    };
+
+    struct ArmState
+    {
+        std::string robot_name;
+        std::string controller_ee_name;
+
+        Eigen::Affine3d x_goal{Eigen::Affine3d::Identity()};
+        Eigen::Affine3d x_target{Eigen::Affine3d::Identity()};
+
+        bool gripper_closed{false};
+        double previous_gripper_command{0.0};
+    };
+
+private:
     bool acceptGoal(const ActionT::Goal& goal) override;
     void onGoalAccepted(const ActionT::Goal& goal) override;
     void onStart() override;
+
     ComputeResult compute(
         const rclcpp::Time& time,
         const rclcpp::Duration& period) override;
+
     void onStop(StopReason reason) override;
     ResultPtr makeResult(StopReason reason) override;
 
 private:
-    void onDeltaAction(
-        const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void onDeltaAction(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
 
     void publishInferenceActive(bool active);
-    void publishObservation();
+
+    void publishObservation(
+        const ArmState& arm,
+        const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr& publisher);
 
     static double nowSec()
     {
         using namespace std::chrono;
-        return duration<double>(
-            steady_clock::now().time_since_epoch()).count();
+        return duration<double>(steady_clock::now().time_since_epoch()).count();
     }
 
 private:
@@ -77,17 +100,17 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr delta_action_sub_;
 
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr inference_active_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr eef_pose_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr left_eef_pose_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr right_eef_pose_pub_;
 
     std::map<std::string, drc::TaskSpaceData> ee_data_;
 
-    std::string controller_ee_name_;
-    std::string robot_name_;
+    ArmMode arm_mode_{ArmMode::LEFT};
+
+    ArmState left_arm_;
+    ArmState right_arm_;
 
     int control_mode_{0};
-
-    Eigen::Affine3d x_goal_{Eigen::Affine3d::Identity()};
-    Eigen::Affine3d x_target_{Eigen::Affine3d::Identity()};
 
     std::vector<double> latest_action_;
 
@@ -99,9 +122,6 @@ private:
 
     double position_scale_{1.0};
     double rotation_scale_{1.0};
-
-    bool gripper_closed_{false};
-    double previous_gripper_command_{0.0};
 
     int step_count_{0};
 };

@@ -13,7 +13,7 @@ from fr3_husky_msgs.action import RobomimicMove
 
 
 class RobomimicMoveClient(Node):
-    def __init__(self, disable=False, yaw_only=False, left_off=False, right_off=False):
+    def __init__(self, disable=False, arm=None):
         super().__init__('robomimic_move_client')
 
         self._action_name = '/fr3_husky_robomimic_move'
@@ -21,9 +21,7 @@ class RobomimicMoveClient(Node):
         self._client = ActionClient(self, RobomimicMove, self._action_name)
         self._cancel_client = self.create_client(CancelGoal, self._cancel_service_name)
         self._disable = disable
-        self._yaw_only = yaw_only
-        self._left_off = left_off
-        self._right_off = right_off
+        self._arm = arm
 
     def wait_for_action_server(self) -> bool:
         self.get_logger().info(f'Waiting for action server: {self._action_name}')
@@ -37,7 +35,7 @@ class RobomimicMoveClient(Node):
     def send_goal_and_wait_for_accept(self) -> bool:
         goal = RobomimicMove.Goal()
         goal.mode = 0
-        goal.controller_ee_name = 'right_fr3_hand_tcp'
+        goal.arm = self._arm
         goal.position_scale = 1.0
         goal.rotation_scale = 1.0
         goal.command_timeout = 0.5
@@ -98,12 +96,17 @@ def parse_args():
         '--disable',
         action='store_true',
         help='Cancel the currently running RobomimicMove action instead of starting it')
+    parser.add_argument(
+        '--arm',
+        required=True,
+        type=str,
+        help='left, right or dual')
     return parser.parse_args()
 
 
-def run_robomimic_move(disable=False):
+def run_robomimic_move(disable=False, arm=None):
     rclpy.init()
-    node = RobomimicMoveClient(disable=disable)
+    node = RobomimicMoveClient(disable=disable, arm=arm)
 
     try:
         ok = node.run()
@@ -118,7 +121,7 @@ def run_robomimic_move(disable=False):
 def main(args=None):
     del args
     cli_args = parse_args()
-    run_robomimic_move(disable=cli_args.disable)
+    run_robomimic_move(disable=cli_args.disable, arm = cli_args.arm)
 
 
 if __name__ == '__main__':
