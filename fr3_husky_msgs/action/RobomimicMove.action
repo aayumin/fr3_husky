@@ -1,0 +1,13 @@
+# Goal
+int32 mode
+string controller_ee_name
+float64 position_scale
+float64 rotation_scale
+float64 command_timeout
+---
+# Result
+bool success
+string message
+---
+# Feedback
+bool active

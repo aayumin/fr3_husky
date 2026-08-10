@@ -35,6 +35,7 @@ setup(
             'nut_tightening = fr3_husky_task_manager.nut_tightening:main',
             'screw = fr3_husky_task_manager.screw:main',
             'gripper_move = fr3_husky_task_manager.gripper_move:main',
+            'robomimic_move = fr3_husky_task_manager.robomimic_move:main',
             'log = fr3_husky_task_manager.live_log:main',
             'image = fr3_husky_task_manager.image_streaming:main',
             'check1 = fr3_husky_task_manager.check1:main',
