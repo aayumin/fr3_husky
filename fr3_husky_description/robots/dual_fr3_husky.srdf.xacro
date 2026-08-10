@@ -25,16 +25,14 @@
                            hand="$(arg hand)"
                            ee_id="franka_hand"
                            no_prefix="false"
-                           arm_prefix="left_"
-                           include_virtual_joint="false">
+                           arm_prefix="left_">
     </xacro:franka_arm_srdf>
 
     <xacro:franka_arm_srdf arm_id="fr3"
                            hand="$(arg hand)"
                            ee_id="franka_hand"
                            no_prefix="false"
-                           arm_prefix="right_"
-                           include_virtual_joint="false">
+                           arm_prefix="right_">
     </xacro:franka_arm_srdf>
 
     <xacro:if value="$(arg with_sc)"> <!-- if sc -->
