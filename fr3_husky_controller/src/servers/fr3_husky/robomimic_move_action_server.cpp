@@ -160,7 +160,7 @@ void RobomimicMove::onGoalAccepted(const ActionT::Goal& goal)
 
     position_scale_ = goal.position_scale > 0.0 ? goal.position_scale : 1.0;
     rotation_scale_ = goal.rotation_scale > 0.0 ? goal.rotation_scale : 1.0;
-    command_timeout_ = goal.command_timeout > 0.0 ? goal.command_timeout : 0.5;
+    command_timeout_ = goal.command_timeout > 0.0 ? goal.command_timeout : 1.0;
 
     requestActivate();
 }

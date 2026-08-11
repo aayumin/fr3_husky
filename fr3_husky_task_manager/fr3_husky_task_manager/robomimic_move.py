@@ -38,7 +38,7 @@ class RobomimicMoveClient(Node):
         goal.arm = self._arm
         goal.position_scale = 1.0
         goal.rotation_scale = 1.0
-        goal.command_timeout = 0.5
+        goal.command_timeout = 1.0
 
 
         self.get_logger().info('Sending RobomimicMove goal')
