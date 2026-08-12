@@ -38,7 +38,8 @@ setup(
             'robomimic_move = fr3_husky_task_manager.robomimic_move:main',
             'log = fr3_husky_task_manager.live_log:main',
             'image = fr3_husky_task_manager.image_streaming:main',
-            'check1 = fr3_husky_task_manager.check1:main',
+            'check1 = fr3_husky_task_manager.check1:main', # mujoco sim
+            'check2 = fr3_husky_task_manager.check2:main', # real-robot
         ],
     },
 )
