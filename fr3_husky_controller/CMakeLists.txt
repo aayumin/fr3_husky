@@ -130,6 +130,7 @@ add_library(${PROJECT_NAME} SHARED
     
     src/servers/fr3/joint_trajectory_controller_action_server.cpp
     src/servers/fr3/move_to_joint_action_server.cpp
+    src/servers/fr3/robomimic_move_action_server.cpp
     src/servers/fr3_husky/joint_trajectory_controller_action_server.cpp
     src/servers/fr3_husky/move_to_joint_action_server.cpp
     src/servers/fr3_husky/task_space_move_action_server.cpp
