@@ -4,11 +4,12 @@ from datetime import datetime
 from sensor_msgs.msg import Image, JointState
 from geometry_msgs.msg import PoseStamped
 import pickle
+import time
 import numpy as np
 import cv2
 
 class RealTimeDataSaver(Node):
-    def __init__(self):
+    def __init__(self,):
         super().__init__('realtime_data_saver')
         
         # 1. 파일 설정 (바이너리 쓰기 모드 'ab')
@@ -16,8 +17,22 @@ class RealTimeDataSaver(Node):
         self.filename = f"pkl_data/realtime_ros_data_{current_time_str}.pkl"
         self.file_handle = open(self.filename, "wb")
 
-        
-        
+
+        # Hz (fps)
+        self.save_rate = 30.0
+        self.save_period = 1.0 / self.save_rate
+
+        self.last_save_time = {
+            '/mujoco_ros_hardware/right_d435i/color/image_raw': 0.0,
+            '/mujoco_ros_hardware/top_azure/color/image_raw': 0.0,
+            '/joint_states': 0.0,
+            '/debug/cur_pose_left': 0.0,
+            '/debug/cur_pose_right': 0.0,
+            '/debug/target_smooth_pose_left': 0.0,
+            '/debug/target_smooth_pose_right': 0.0,
+        }
+
+
         # 2. 필터링할 관절 이름 목록 정의
         self.target_joints = [
             'left_fr3_joint1', 'left_fr3_joint2', 'left_fr3_joint3', 'left_fr3_joint4', 
@@ -60,6 +75,16 @@ class RealTimeDataSaver(Node):
 
         self.get_logger().info(f"실시간 데이터 수집 시작 (Pose 4종 추가 완료) -> {self.filename}")
 
+    def should_save(self, topic_name):
+        now = time.monotonic()
+
+        if now - self.last_save_time[topic_name] < self.save_period:
+            return False
+
+        self.last_save_time[topic_name] = now
+        return True
+
+
     def save_to_pickle(self, data):
         """데이터를 pickle 형태로 파일 끝에 추가 저장하는 헬퍼 함수"""
         pickle.dump(data, self.file_handle)
@@ -95,6 +120,9 @@ class RealTimeDataSaver(Node):
 
     
     def image_right_callback(self, msg):
+        topic_name = '/mujoco_ros_hardware/right_d435i/color/image_raw'
+        if not self.should_save(topic_name): return
+    
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
             img = self.center_crop_resize_image_msg(msg, target_size=224)
@@ -111,6 +139,9 @@ class RealTimeDataSaver(Node):
             self.save_to_pickle(data)
 
     def image_top_callback(self, msg):
+
+        topic_name = '/mujoco_ros_hardware/top_azure/color/image_raw'
+        if not self.should_save(topic_name): return
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
             img = self.center_crop_resize_image_msg(msg, target_size=224)
@@ -128,6 +159,8 @@ class RealTimeDataSaver(Node):
 
 
     def joint_states_callback(self, msg):
+        if not self.should_save('/joint_states'): return
+
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
             joint_map = {name: (pos, vel) for name, pos, vel in zip(msg.name, msg.position, msg.velocity)}
@@ -152,6 +185,7 @@ class RealTimeDataSaver(Node):
 
     def pose_stamped_callback(self, msg, topic_name):
         """PoseStamped 토픽 4종을 통합 처리하는 공용 콜백 함수"""
+        if not self.should_save(topic_name): return
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
             p = msg.pose.position
