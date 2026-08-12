@@ -3,7 +3,7 @@
 #include <cmath>
 #include <functional>
 #include <stdexcept>
-
+#include <algorithm>
 
 namespace fr3_husky_controller::servers::fr3_husky
 {
@@ -187,11 +187,8 @@ void RobomimicMove::onStart()
         arm.x_target = ee_data.x;
     };
 
-    if (arm_mode_ == ArmMode::LEFT || arm_mode_ == ArmMode::DUAL)
-        initialize_arm(left_arm_);
-
-    if (arm_mode_ == ArmMode::RIGHT || arm_mode_ == ArmMode::DUAL)
-        initialize_arm(right_arm_);
+    initialize_arm(left_arm_);
+    initialize_arm(right_arm_);
 
     {
         std::lock_guard<std::mutex> lock(command_mutex_);
@@ -299,17 +296,12 @@ RobomimicMove::compute(
         ee_data.xddot.setZero();
     };
 
-    if (arm_mode_ == ArmMode::LEFT || arm_mode_ == ArmMode::DUAL)
-    {
-        update_arm_state(left_arm_);
-        publishObservation(left_arm_, left_eef_pose_pub_);
-    }
+    update_arm_state(left_arm_);
+    update_arm_state(right_arm_);
 
-    if (arm_mode_ == ArmMode::RIGHT || arm_mode_ == ArmMode::DUAL)
-    {
-        update_arm_state(right_arm_);
-        publishObservation(right_arm_, right_eef_pose_pub_);
-    }
+    publishObservation(left_arm_, left_eef_pose_pub_);
+    publishObservation(right_arm_, right_eef_pose_pub_);
+
 
     std::vector<double> action;
     bool new_command = false;
@@ -408,15 +400,25 @@ RobomimicMove::compute(
         }
     }
 
-    const double alpha = 0.25;
 
-    auto update_target = [this, alpha](ArmState& arm)
+    const double max_linear_velocity = 0.10;   // m/s
+    const double max_angular_velocity = 0.5;   // rad/s
+    const double dt = fr3_husky_model_updater_.dt_;
+
+    auto update_target = [this, max_linear_velocity, max_angular_velocity, dt](ArmState& arm)
     {
         auto& ee_data = ee_data_[arm.controller_ee_name];
 
-        arm.x_target.translation() =
-            (1.0 - alpha) * arm.x_target.translation() +
-            alpha * arm.x_goal.translation();
+        Eigen::Vector3d position_error =
+            arm.x_goal.translation() - arm.x_target.translation();
+
+        const double distance = position_error.norm();
+        const double max_position_step = max_linear_velocity * dt;
+
+        if (distance > max_position_step && distance > 1e-9)
+            arm.x_target.translation() += position_error * (max_position_step / distance);
+        else
+            arm.x_target.translation() = arm.x_goal.translation();
 
         Eigen::Quaterniond q_target(arm.x_target.linear());
         Eigen::Quaterniond q_goal(arm.x_goal.linear());
@@ -427,17 +429,27 @@ RobomimicMove::compute(
         if (q_target.dot(q_goal) < 0.0)
             q_goal.coeffs() *= -1.0;
 
-        arm.x_target.linear() = q_target.slerp(alpha, q_goal).toRotationMatrix();
+        double dot = std::clamp(q_target.dot(q_goal), -1.0, 1.0);
+        const double angle = 2.0 * std::acos(dot);
+        const double max_angle_step = max_angular_velocity * dt;
+
+        if (angle > max_angle_step && angle > 1e-9)
+        {
+            const double ratio = max_angle_step / angle;
+            arm.x_target.linear() = q_target.slerp(ratio, q_goal).toRotationMatrix();
+        }
+        else
+        {
+            arm.x_target.linear() = q_goal.toRotationMatrix();
+        }
 
         ee_data.x_desired = arm.x_target;
         ee_data.xdot_desired.setZero();
     };
 
-    if (arm_mode_ == ArmMode::LEFT || arm_mode_ == ArmMode::DUAL)
-        update_target(left_arm_);
 
-    if (arm_mode_ == ArmMode::RIGHT || arm_mode_ == ArmMode::DUAL)
-        update_target(right_arm_);
+    update_target(left_arm_);
+    update_target(right_arm_);
 
     Eigen::VectorXd qdot_mobile =
         Eigen::VectorXd::Zero(fr3_husky_model_updater_.mobile_dof_);
