@@ -16,8 +16,8 @@ class AppleVisionProClient(Node):
     def __init__(self, disable=False, yaw_only=False, left_off=False, right_off=False):
         super().__init__('apple_vision_pro_client')
 
-        self._action_name = '/fr3_husky_AVP_tracker'
-        # self._action_name = '/fr3_AVP_tracker'
+        # self._action_name = '/fr3_husky_AVP_tracker'
+        self._action_name = '/fr3_AVP_tracker'
         self._cancel_service_name = f'{self._action_name}/_action/cancel_goal'
         self._client = ActionClient(self, AppleVisionPro, self._action_name)
         self._cancel_client = self.create_client(CancelGoal, self._cancel_service_name)

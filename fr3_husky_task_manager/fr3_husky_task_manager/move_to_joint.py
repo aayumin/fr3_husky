@@ -35,8 +35,8 @@ class MoveToJointClient(Node):
     ):
         super().__init__('move_to_joint_client')
 
-        self._action_name = '/fr3_husky_move_to_joint'
-        # self._action_name = '/fr3_move_to_joint'
+        # self._action_name = '/fr3_husky_move_to_joint'
+        self._action_name = '/fr3_move_to_joint'
         self._client = ActionClient(self, MoveToJoint, self._action_name)
 
         self._goal_handle = None
