@@ -79,6 +79,18 @@ KeyboardMove::KeyboardMove(const std::string& name, const NodePtr& node, ModelUp
         });
 
 
+
+    // Data collection publishers.
+    target_pose_l_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+        "/debug/target_smooth_pose_left", 10);
+    target_pose_r_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+        "/debug/target_smooth_pose_right", 10);
+    cur_pose_l_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+        "/debug/cur_pose_left", 10);
+    cur_pose_r_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+        "/debug/cur_pose_right", 10);
+
+        
     RCLCPP_INFO(node_->get_logger(), "[%s] KeyboardMove created", name_.c_str());
 }
 
@@ -310,6 +322,82 @@ KeyboardMove::ComputeResult KeyboardMove::compute(const rclcpp::Time& time, cons
     {
         ee_data_[right_controller_ee_name_].x_desired = x_target_r_;
         ee_data_[right_controller_ee_name_].xdot_desired.setZero();
+    }
+
+
+    // ============================================================
+    // Data collection
+    //
+    // Keyboard 입력 여부와 상관없이 매 compute cycle마다
+    // LEFT / RIGHT 모두 publish.
+    //
+    // current pose : ee_data_[ee_name].x
+    // command pose : ee_data_[ee_name].x_desired
+    // ============================================================
+    {
+        // Left / Right 모두 동일한 timestamp 사용
+        const rclcpp::Time stamp = node_->now();
+
+        auto affineToPoseStamped =
+            [&stamp](const Eigen::Affine3d& T) -> geometry_msgs::msg::PoseStamped
+            {
+                geometry_msgs::msg::PoseStamped msg;
+
+                msg.header.stamp = stamp;
+                msg.header.frame_id = "base_link";
+
+                // position
+                msg.pose.position.x = T.translation().x();
+                msg.pose.position.y = T.translation().y();
+                msg.pose.position.z = T.translation().z();
+
+                // orientation
+                Eigen::Quaterniond q(T.linear());
+                q.normalize();
+
+                msg.pose.orientation.x = q.x();
+                msg.pose.orientation.y = q.y();
+                msg.pose.orientation.z = q.z();
+                msg.pose.orientation.w = q.w();
+
+                return msg;
+            };
+
+
+        // ========================================================
+        // LEFT ARM
+        // ========================================================
+        if (!left_controller_ee_name_.empty())
+        {
+            const auto& left_ee_data =
+                ee_data_[left_controller_ee_name_];
+
+            // 실제 controller에 들어가는 EE target pose
+            target_pose_l_pub_->publish(
+                affineToPoseStamped(left_ee_data.x_desired));
+
+            // 현재 실제 EE pose
+            cur_pose_l_pub_->publish(
+                affineToPoseStamped(left_ee_data.x));
+        }
+
+
+        // ========================================================
+        // RIGHT ARM
+        // ========================================================
+        if (!right_controller_ee_name_.empty())
+        {
+            const auto& right_ee_data =
+                ee_data_[right_controller_ee_name_];
+
+            // 실제 controller에 들어가는 EE target pose
+            target_pose_r_pub_->publish(
+                affineToPoseStamped(right_ee_data.x_desired));
+
+            // 현재 실제 EE pose
+            cur_pose_r_pub_->publish(
+                affineToPoseStamped(right_ee_data.x));
+        }
     }
 
 

@@ -1,30 +1,32 @@
 import rclpy
 from rclpy.node import Node
 from datetime import datetime
-from sensor_msgs.msg import Image, JointState
+from sensor_msgs.msg import JointState, CompressedImage # 💡 CompressedImage 추가
 from geometry_msgs.msg import PoseStamped
 import pickle
 import time
 import numpy as np
 import cv2
 
+
 class RealTimeDataSaver(Node):
-    def __init__(self,):
+    def __init__(self):
         super().__init__('realtime_data_saver')
         
-        # 1. 파일 설정 (바이너리 쓰기 모드 'ab')
+        # 1. 파일 설정 (바이너리 쓰기 모드 'wb')
         current_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.filename = f"pkl_data/realtime_ros_data_{current_time_str}.pkl"
         self.file_handle = open(self.filename, "wb")
 
-
-        # Hz (fps)
+        # Hz (fps) 설정 및 주기 계산 (30 FPS)
         self.save_rate = 30.0
         self.save_period = 1.0 / self.save_rate
 
+        # 💡 토픽 경로와 타입이 변경됨에 따라 관리용 키 이름 변경
+        self.image_topic_name = '/camera/camera/color/image_raw/compressed'
+
         self.last_save_time = {
-            '/mujoco_ros_hardware/right_d435i/color/image_raw': 0.0,
-            '/mujoco_ros_hardware/top_azure/color/image_raw': 0.0,
+            self.image_topic_name: 0.0,
             '/joint_states': 0.0,
             '/debug/cur_pose_left': 0.0,
             '/debug/cur_pose_right': 0.0,
@@ -32,6 +34,8 @@ class RealTimeDataSaver(Node):
             '/debug/target_smooth_pose_right': 0.0,
         }
 
+        # HDF5 변환 규격과 일치 (84x84)
+        self.target_image_size = 84
 
         # 2. 필터링할 관절 이름 목록 정의
         self.target_joints = [
@@ -43,18 +47,16 @@ class RealTimeDataSaver(Node):
             'right_fr3_finger_joint1', 'right_fr3_finger_joint2'
         ]
         
-        # 3. 구독 개시 현재 시간 기록 (실시간 필터링용)
+        # 3. 구독 개시 현재 시간 기록 (과거 메시지 무시용)
         self.start_time = self.get_clock().now()
 
-        # 4. 기존 토픽 구독 설정 (sensor_msgs)
-        self.sub_img_right = self.create_subscription(
-            Image, '/mujoco_ros_hardware/right_d435i/color/image_raw', self.image_right_callback, 10)
+        # 4. 토픽 구독 설정 (💡 Depth 대신 CompressedImage 타입 적용)
         self.sub_img_top = self.create_subscription(
-            Image, '/mujoco_ros_hardware/top_azure/color/image_raw', self.image_top_callback, 10)
+            CompressedImage, self.image_topic_name, self.image_top_callback, 10)
         self.sub_joints = self.create_subscription(
             JointState, '/joint_states', self.joint_states_callback, 10)
 
-        # 5. 신규 PoseStamped 토픽 4종 구독 설정 (geometry_msgs)
+        # 5. PoseStamped 토픽 4종 구독 설정
         self.pose_topics = [
             '/debug/cur_pose_left',
             '/debug/cur_pose_right',
@@ -67,99 +69,76 @@ class RealTimeDataSaver(Node):
             sub = self.create_subscription(
                 PoseStamped, 
                 topic_name, 
-                # 람다 함수를 활용하여 콜백에 어떤 토픽에서 들어왔는지 이름을 전달
                 lambda msg, t_name=topic_name: self.pose_stamped_callback(msg, t_name), 
                 10
             )
             self.pose_subs.append(sub)
 
-        self.get_logger().info(f"실시간 데이터 수집 시작 (Pose 4종 추가 완료) -> {self.filename}")
+        self.get_logger().info(f"실시간 데이터 수집 시작 (컬러 압축 이미지 모드) -> {self.filename}")
 
     def should_save(self, topic_name):
         now = time.monotonic()
-
         if now - self.last_save_time[topic_name] < self.save_period:
             return False
-
         self.last_save_time[topic_name] = now
         return True
 
-
     def save_to_pickle(self, data):
-        """데이터를 pickle 형태로 파일 끝에 추가 저장하는 헬퍼 함수"""
         pickle.dump(data, self.file_handle)
 
-    def center_crop_resize_image_msg(self, msg, target_size=224):
-        data = np.frombuffer(msg.data, dtype=np.uint8)
+    def process_compressed_image_msg(self, msg, target_size=84):
+        """💡 JPEG/PNG로 압축된 바이너리 데이터를 RGB 넘파이 배열로 복원 및 크롭 가공"""
+        # 1. 압축 바이너리 배열을 OpenCV 이미지로 디코딩 (기본 BGR 컬러 포맷으로 해제됨)
+        np_arr = np.frombuffer(msg.data, np.uint8)
+        img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        if msg.encoding in ["rgb8", "bgr8"]:
-            img = data.reshape(msg.height, msg.width, 3)
-        elif msg.encoding in ["rgba8", "bgra8"]:
-            img = data.reshape(msg.height, msg.width, 4)
-            img = img[:, :, :3]
-        elif msg.encoding in ["mono8", "8UC1"]:
-            img = data.reshape(msg.height, msg.width)
-        else:
-            raise ValueError(f"Unsupported image encoding: {msg.encoding}")
+        if img_bgr is None:
+            raise ValueError("Compressed image decoding failed.")
 
-        h, w = img.shape[:2]
+        # 2. 중앙 크롭 처리
+        h, w = img_bgr.shape[:2]
         crop_size = min(h, w)
         y0 = (h - crop_size) // 2
         x0 = (w - crop_size) // 2
-        img = img[y0:y0 + crop_size, x0:x0 + crop_size]
+        img = img_bgr[y0:y0 + crop_size, x0:x0 + crop_size]
 
+        # 3. 84x84 리사이즈
         interpolation = cv2.INTER_AREA if crop_size > target_size else cv2.INTER_LINEAR
         img = cv2.resize(img, (target_size, target_size), interpolation=interpolation)
 
-        if msg.encoding == "bgr8":
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        elif msg.encoding == "bgra8":
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        return img
-
-    
-    def image_right_callback(self, msg):
-        topic_name = '/mujoco_ros_hardware/right_d435i/color/image_raw'
-        if not self.should_save(topic_name): return
-    
-        msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
-        if msg_time > self.start_time:
-            img = self.center_crop_resize_image_msg(msg, target_size=224)
-            data = {
-                'topic': '/mujoco_ros_hardware/right_d435i/color/image_raw',
-                'sec': msg.header.stamp.sec,
-                'nanosec': msg.header.stamp.nanosec,
-                'data': img.tobytes(),
-                'height': 224,
-                'width': 224,
-                'encoding': 'mono8' if img.ndim == 2 else 'rgb8',
-                'step': 224 if img.ndim == 2 else 224 * 3
-            }
-            self.save_to_pickle(data)
+        # 4. 학습 네트워크 관례에 맞춰 BGR에서 RGB로 색상 채널 전환
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        return img_rgb
 
     def image_top_callback(self, msg):
-
-        topic_name = '/mujoco_ros_hardware/top_azure/color/image_raw'
-        if not self.should_save(topic_name): return
+        if not self.should_save(self.image_topic_name): return
+        
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
-            img = self.center_crop_resize_image_msg(msg, target_size=224)
-            data = {
-                'topic': '/mujoco_ros_hardware/top_azure/color/image_raw',
-                'sec': msg.header.stamp.sec,
-                'nanosec': msg.header.stamp.nanosec,
-                'data': img.tobytes(),
-                'height': 224,
-                'width': 224,
-                'encoding': 'mono8' if img.ndim == 2 else 'rgb8',
-                'step': 224 if img.ndim == 2 else 224 * 3
-            }
-            self.save_to_pickle(data)
+            try:
+                # 변경된 컬러 압축 이미지 가공 함수 호출
+                img = self.process_compressed_image_msg(msg, target_size=self.target_image_size)
 
+                print(f"get image msg: {msg.header.stamp.sec}.{msg.header.stamp.nanosec}, shape: {img.shape}, dtype: {img.dtype}")
+                
+                # robomimic 변환 스크립트 규격 구조 유지
+                data = {
+                    'topic': self.image_topic_name,
+                    'sec': msg.header.stamp.sec,
+                    'nanosec': msg.header.stamp.nanosec,
+                    'data': img.tobytes(),
+                    'height': self.target_image_size,
+                    'width': self.target_image_size,
+                    'encoding': 'rgb8',  # 💡 컬러 데이터 포맷 명시
+                    'step': self.target_image_size * 3  # 채널이 3개이므로 너비 * 3
+                }
+                self.save_to_pickle(data)
+            except Exception as e:
+                self.get_logger().error(f"Top Compressed Color Image 저장 오류: {e}")
 
     def joint_states_callback(self, msg):
-        if not self.should_save('/joint_states'): return
+        topic_name = '/joint_states'
+        if not self.should_save(topic_name): return
 
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
@@ -174,7 +153,7 @@ class RealTimeDataSaver(Node):
                     filtered_velocities.append(vel)
             
             data = {
-                'topic': '/joint_states',
+                'topic': topic_name,
                 'sec': msg.header.stamp.sec,
                 'nanosec': msg.header.stamp.nanosec,
                 'joint_names': self.target_joints,
@@ -184,23 +163,28 @@ class RealTimeDataSaver(Node):
             self.save_to_pickle(data)
 
     def pose_stamped_callback(self, msg, topic_name):
-        """PoseStamped 토픽 4종을 통합 처리하는 공용 콜백 함수"""
         if not self.should_save(topic_name): return
+
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
-            p = msg.pose.position
-            o = msg.pose.orientation
-            
             data = {
                 'topic': topic_name,
                 'sec': msg.header.stamp.sec,
                 'nanosec': msg.header.stamp.nanosec,
-                'frame_id': msg.header.frame_id,
-                # 위치 및 쿼터니언 데이터 분리 파싱
-                'position': {'x': p.x, 'y': p.y, 'z': p.z},
-                'orientation': {'x': o.x, 'y': o.y, 'z': o.z, 'w': o.w}
+                'position': {
+                    'x': msg.pose.position.x,
+                    'y': msg.pose.position.y,
+                    'z': msg.pose.position.z
+                },
+                'orientation': {
+                    'x': msg.pose.orientation.x,
+                    'y': msg.pose.orientation.y,
+                    'z': msg.pose.orientation.z,
+                    'w': msg.pose.orientation.w
+                }
             }
             self.save_to_pickle(data)
+
 
     def destroy_node(self):
         if hasattr(self, 'file_handle') and not self.file_handle.closed:
