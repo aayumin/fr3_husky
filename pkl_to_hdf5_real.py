@@ -149,6 +149,61 @@ def pose_to_pos_quat(record):
 
     return pos, quat
 
+def quat_xyzw_to_rotvec(quat, eps=1e-8):
+    """
+    Convert quaternion [x, y, z, w] to rotation vector axis * angle.
+
+    Returns:
+        rotvec: np.ndarray, shape [3]
+    """
+    quat = np.asarray(quat, dtype=np.float32)
+    quat = quat / max(np.linalg.norm(quat), eps)
+
+    q_xyz = quat[:3]
+    q_w = float(quat[3])
+
+    # Use a canonical hemisphere to reduce sign discontinuity.
+    if q_w < 0.0:
+        q_xyz = -q_xyz
+        q_w = -q_w
+
+    q_w = np.clip(q_w, -1.0, 1.0)
+
+    sin_half = np.linalg.norm(q_xyz)
+
+    if sin_half < eps:
+        return np.zeros(3, dtype=np.float32)
+
+    angle = 2.0 * np.arctan2(sin_half, q_w)
+    axis = q_xyz / sin_half
+    rotvec = axis * angle
+
+    return rotvec.astype(np.float32)
+
+def gripper_qpos_to_action(gripper_qpos):
+    """
+    Convert 2 finger joint positions into one scalar gripper action.
+
+    For absolute-action real-world data, this keeps the gripper in its native
+    physical scale. Action normalization in the training pipeline can handle
+    the magnitude later.
+
+    Args:
+        gripper_qpos: np.ndarray, shape [2] for single arm
+
+    Returns:
+        gripper_action: np.ndarray, shape [1]
+    """
+    gripper_qpos = np.asarray(gripper_qpos, dtype=np.float32)
+
+    if gripper_qpos.size == 0:
+        return np.zeros((1,), dtype=np.float32)
+
+    # Mean is stable when two finger joints move symmetrically.
+    gripper_value = np.mean(gripper_qpos)
+
+    return np.array([gripper_value], dtype=np.float32)
+
 
 def extract_joint_arrays(record, arm):
     names = record["joint_names"]
@@ -263,11 +318,19 @@ def build_demo_arrays(topics, arm_mode):
 
             current_pos, current_quat = pose_to_pos_quat(eef_cur_r)
             target_pos, target_quat = pose_to_pos_quat(eef_target_r)
+            target_rotvec = quat_xyzw_to_rotvec(target_quat)
 
             current_pos_list.append(current_pos)
             current_quat_list.append(current_quat)
 
-            arm_action = np.concatenate([target_pos, target_quat], axis=0)
+            if arm_mode == "dual":
+                arm_idx = selected_arms.index(arm)
+                arm_gripper_qpos = gq[2 * arm_idx : 2 * arm_idx + 2]
+            else:
+                arm_gripper_qpos = gq
+
+            target_gripper = gripper_qpos_to_action(arm_gripper_qpos)
+            arm_action = np.concatenate([target_pos, target_rotvec, target_gripper], axis=0).astype(np.float32)
             target_action_list.append(arm_action)
 
         current_eef_pos = np.concatenate(current_pos_list, axis=0)
