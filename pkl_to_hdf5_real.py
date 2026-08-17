@@ -59,7 +59,7 @@ CONTROL_DT = 0.05
 NORMALIZE_ACTIONS = False
 
 SINGLE_ARM_ACTION_SCALE = np.array(
-    [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+    [0.05, 0.05, 0.05, 1.0, 1.0, 1.0, 1.0, 0.04],
     dtype=np.float32,
 )
 
@@ -148,6 +148,27 @@ def pose_to_pos_quat(record):
     quat /= max(np.linalg.norm(quat), 1e-8)
 
     return pos, quat
+
+
+def align_quat_sign(quat, reference_quat=None):
+    """
+    Keep quaternion sign continuous.
+
+    q and -q represent the same orientation, but sign flips create artificial
+    discontinuities in action / observation values.
+    """
+    quat = np.asarray(quat, dtype=np.float32)
+    quat = quat / max(np.linalg.norm(quat), 1e-8)
+
+    if reference_quat is not None:
+        reference_quat = np.asarray(reference_quat, dtype=np.float32)
+        reference_quat = reference_quat / max(np.linalg.norm(reference_quat), 1e-8)
+
+        if np.dot(quat, reference_quat) < 0.0:
+            quat = -quat
+
+    return quat.astype(np.float32)
+
 
 def quat_xyzw_to_rotvec(quat, eps=1e-8):
     """
@@ -289,6 +310,9 @@ def build_demo_arrays(topics, arm_mode):
 
     sample_times = make_sample_times(joint_records, CONTROL_DT)
 
+    prev_current_quat = {arm: None for arm in selected_arms}
+    prev_target_quat = {arm: None for arm in selected_arms}
+
     agentview_images = []
     # eye_in_hand_images = []
 
@@ -318,7 +342,14 @@ def build_demo_arrays(topics, arm_mode):
 
             current_pos, current_quat = pose_to_pos_quat(eef_cur_r)
             target_pos, target_quat = pose_to_pos_quat(eef_target_r)
-            target_rotvec = quat_xyzw_to_rotvec(target_quat)
+            current_quat = align_quat_sign(current_quat, reference_quat=prev_current_quat[arm])
+
+            target_reference_quat = prev_target_quat[arm]
+            if target_reference_quat is None: target_reference_quat = current_quat
+            target_quat = align_quat_sign(target_quat, reference_quat=target_reference_quat)
+
+            prev_current_quat[arm] = current_quat
+            prev_target_quat[arm] = target_quat
 
             current_pos_list.append(current_pos)
             current_quat_list.append(current_quat)
@@ -330,7 +361,12 @@ def build_demo_arrays(topics, arm_mode):
                 arm_gripper_qpos = gq
 
             target_gripper = gripper_qpos_to_action(arm_gripper_qpos)
-            arm_action = np.concatenate([target_pos, target_rotvec, target_gripper], axis=0).astype(np.float32)
+
+            arm_action = np.concatenate(
+                [target_pos, target_quat, target_gripper],
+                axis=0,
+            ).astype(np.float32)
+
             target_action_list.append(arm_action)
 
         current_eef_pos = np.concatenate(current_pos_list, axis=0)
@@ -467,8 +503,13 @@ def write_robomimic_hdf5_multi(out_path, demo_list, arm_mode):
 
             print(f"[{demo_name}] steps={num_samples}, actions={demo['actions'].shape}")
 
+
         data_grp.attrs["total"] = total_samples
         data_grp.attrs["arm"] = arm_mode
+        data_grp.attrs["action_mode"] = "absolute"
+        data_grp.attrs["action_repr"] = "absolute_xyz_quat_gripper"
+        data_grp.attrs["single_arm_action_dim"] = 8
+
         data_grp.attrs["env_args"] = json.dumps(make_compat_env_args())
 
         str_dtype = h5py.string_dtype(encoding="utf-8")
