@@ -58,6 +58,10 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
 
 find_package(ament_cmake REQUIRED)
 find_package(OpenGL REQUIRED)
+
+find_package(pinocchio REQUIRED PATHS /opt/openrobots/lib/cmake/pinocchio NO_DEFAULT_PATH)
+
+
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
     find_package(${Dependency} REQUIRED)
 endforeach()
@@ -91,7 +95,10 @@ if(NOT TARGET mujoco::mujoco)
     )
 endif()
 
-
+include_directories(
+  BEFORE
+  /opt/openrobots/include
+)
 
 generate_parameter_library(fr3_controller_parameters
     src/fr3_controller_parameters.yaml
@@ -161,6 +168,7 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                            $<INSTALL_INTERFACE:include>
+                           /opt/openrobots/include 
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC

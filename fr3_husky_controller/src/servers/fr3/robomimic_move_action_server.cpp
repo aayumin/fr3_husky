@@ -1,4 +1,4 @@
-#include <fr3_husky_controller/servers/fr3_husky/robomimic_move_action_server.hpp>
+#include <fr3_husky_controller/servers/fr3/robomimic_move_action_server.hpp>
 
 #include <cmath>
 #include <functional>
@@ -401,8 +401,8 @@ RobomimicMove::compute(
     }
 
 
-    const double max_linear_velocity = 0.10;   // m/s
-    const double max_angular_velocity = 0.5;   // rad/s
+    const double max_linear_velocity = 0.02;   // m/s
+    const double max_angular_velocity = 0.1;   // rad/s
     const double dt = fr3_model_updater_.dt_;
 
     auto update_target = [this, max_linear_velocity, max_angular_velocity, dt](ArmState& arm)
@@ -451,21 +451,18 @@ RobomimicMove::compute(
     update_target(left_arm_);
     update_target(right_arm_);
 
-    Eigen::VectorXd qdot_mobile =
-        Eigen::VectorXd::Zero(fr3_model_updater_.mobile_dof_);
 
     switch (control_mode_)
     {
         case 0:
         {
-            Eigen::VectorXd null_qdot = Eigen::VectorXd::Zero(
-                fr3_model_updater_.robot_data_->getActuatorDof());
+            // Eigen::VectorXd null_qdot = Eigen::VectorXd::Zero(
+            //     fr3_model_updater_.robot_data_->getActuatorDof());
 
             fr3_model_updater_.robot_controller_->CLIKStep(
                 ee_data_,
-                qdot_mobile,
-                fr3_model_updater_.qdot_desired_total_,
-                null_qdot);
+                fr3_model_updater_.qdot_desired_total_);
+                // null_qdot);
 
             fr3_model_updater_.q_desired_total_ =
                 fr3_model_updater_.q_total_ +
@@ -473,33 +470,26 @@ RobomimicMove::compute(
                 fr3_model_updater_.qdot_desired_total_;
 
             fr3_model_updater_.torque_desired_total_ =
-                fr3_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(
+                fr3_model_updater_.robot_controller_->moveJointTorqueStep(
                     fr3_model_updater_.q_desired_total_,
                     fr3_model_updater_.qdot_desired_total_,
                     false);
 
-            fr3_model_updater_.wheel_vel_desired_.setZero();
 
             break;
         }
 
         case 1:
         {
-            Eigen::VectorXd null_torque = Eigen::VectorXd::Zero(
-                fr3_model_updater_.robot_data_->getActuatorDof());
+            // Eigen::VectorXd null_torque = Eigen::VectorXd::Zero(
+            //     fr3_model_updater_.robot_data_->getActuatorDof());
 
-            Eigen::VectorXd wheel_acc_desired =
-                Eigen::VectorXd::Zero(fr3_model_updater_.mobile_dof_);
+
 
             fr3_model_updater_.robot_controller_->OSFStep(
                 ee_data_,
-                wheel_acc_desired,
-                fr3_model_updater_.torque_desired_total_,
-                null_torque);
-
-            fr3_model_updater_.wheel_vel_desired_ =
-                fr3_model_updater_.wheel_vel_ +
-                wheel_acc_desired * fr3_model_updater_.dt_;
+                fr3_model_updater_.torque_desired_total_);
+                // null_torque);
 
             break;
         }
@@ -511,15 +501,15 @@ RobomimicMove::compute(
             const bool solved =
                 fr3_model_updater_.robot_controller_->QPIKStep(
                     ee_data_,
-                    qdot_mobile,
                     fr3_model_updater_.qdot_desired_total_,
                     time_verbose);
 
             if (!solved)
             {
                 fr3_model_updater_.qdot_desired_total_.setZero();
-                fr3_model_updater_.wheel_vel_desired_.setZero();
             }
+
+            
 
             fr3_model_updater_.q_desired_total_ =
                 fr3_model_updater_.q_total_ +
@@ -527,7 +517,7 @@ RobomimicMove::compute(
                 fr3_model_updater_.qdot_desired_total_;
 
             fr3_model_updater_.torque_desired_total_ =
-                fr3_model_updater_.robot_controller_->moveManipulatorJointTorqueStep(
+                fr3_model_updater_.robot_controller_->moveJointTorqueStep(
                     fr3_model_updater_.q_desired_total_,
                     fr3_model_updater_.qdot_desired_total_,
                     false);
@@ -538,14 +528,12 @@ RobomimicMove::compute(
         case 3:
         {
             std::string time_verbose;
+            
 
-            Eigen::VectorXd wheel_acc_desired =
-                Eigen::VectorXd::Zero(fr3_model_updater_.mobile_dof_);
 
             const bool solved =
                 fr3_model_updater_.robot_controller_->QPIDStep(
-                    ee_data_,
-                    wheel_acc_desired,
+                    ee_data_,\
                     fr3_model_updater_.torque_desired_total_,
                     time_verbose);
 
@@ -554,12 +542,8 @@ RobomimicMove::compute(
                 fr3_model_updater_.torque_desired_total_ =
                     fr3_model_updater_.g_total_;
 
-                wheel_acc_desired.setZero();
             }
 
-            fr3_model_updater_.wheel_vel_desired_ =
-                fr3_model_updater_.wheel_vel_ +
-                wheel_acc_desired * fr3_model_updater_.dt_;
 
             break;
         }
@@ -568,16 +552,15 @@ RobomimicMove::compute(
         {
             fr3_model_updater_.qdot_desired_total_.setZero();
             fr3_model_updater_.torque_desired_total_.setZero();
-            fr3_model_updater_.wheel_vel_desired_.setZero();
 
             break;
         }
     }
 
+
     fr3_model_updater_.writeCommand(
         fr3_model_updater_.torque_desired_total_ -
-            fr3_model_updater_.g_total_,
-        fr3_model_updater_.wheel_vel_desired_);
+            fr3_model_updater_.g_total_);
 
     ++step_count_;
 

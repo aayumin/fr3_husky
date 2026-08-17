@@ -21,6 +21,7 @@
 #include <action_msgs/msg/goal_status.hpp>
 #include <action_msgs/msg/goal_status_array.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <fr3_husky_msgs/action/move_to_joint.hpp>
 #include <fr3_husky_msgs/action/keyboard_move.hpp>
 
@@ -107,6 +108,12 @@ private:
 
     std::mutex lock_;
     
+    
+    // publisher
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pose_l_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pose_r_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr cur_pose_l_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr cur_pose_r_pub_;
     
 
     // manipulator keypressed

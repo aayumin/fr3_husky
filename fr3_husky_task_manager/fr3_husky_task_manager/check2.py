@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from datetime import datetime
-from sensor_msgs.msg import JointState, CompressedImage 
+from sensor_msgs.msg import JointState, CompressedImage
 from geometry_msgs.msg import PoseStamped
 import pickle
 import time
@@ -114,6 +114,8 @@ class RealTimeDataSaver(Node):
             try:
                 # 변경된 컬러 압축 이미지 가공 함수 호출
                 img = self.process_compressed_image_msg(msg, target_size=self.target_image_size)
+
+                print(f"get image msg: {msg.header.stamp.sec}.{msg.header.stamp.nanosec}, shape: {img.shape}, dtype: {img.dtype}")
                 
                 # robomimic 변환 스크립트 규격 구조 유지
                 data = {

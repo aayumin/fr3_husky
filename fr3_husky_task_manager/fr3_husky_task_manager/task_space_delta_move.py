@@ -51,8 +51,8 @@ class TaskSpaceDeltaMoveClient(Node):
     ):
         super().__init__("task_space_delta_move_client")
 
-        self._action_name = "/fr3_husky_task_space_delta_move"
-        # self._action_name = "/fr3_task_space_delta_move"
+        # self._action_name = "/fr3_husky_task_space_delta_move"
+        self._action_name = "/fr3_task_space_delta_move"
         self._client = ActionClient(self, TaskSpaceDeltaMove, self._action_name)
 
         self._goal_handle = None

@@ -16,7 +16,8 @@ class RobomimicMoveClient(Node):
     def __init__(self, disable=False, arm=None):
         super().__init__('robomimic_move_client')
 
-        self._action_name = '/fr3_husky_robomimic_move'
+        # self._action_name = '/fr3_husky_robomimic_move'
+        self._action_name = '/fr3_robomimic_move'
         self._cancel_service_name = f'{self._action_name}/_action/cancel_goal'
         self._client = ActionClient(self, RobomimicMove, self._action_name)
         self._cancel_client = self.create_client(CancelGoal, self._cancel_service_name)
