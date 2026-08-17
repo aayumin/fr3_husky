@@ -57,6 +57,10 @@ private:
     {
         std::string robot_name;
         std::string controller_ee_name;
+        double gripper_goal = 0.0;
+        double gripper_goal = 0.0;
+        bool has_gripper_command = false;
+        bool gripper_closed_commanded = false;
 
         Eigen::Affine3d x_goal{Eigen::Affine3d::Identity()};
         Eigen::Affine3d x_target{Eigen::Affine3d::Identity()};

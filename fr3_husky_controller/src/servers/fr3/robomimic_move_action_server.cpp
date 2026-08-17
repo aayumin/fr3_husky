@@ -185,6 +185,9 @@ void RobomimicMove::onStart()
 
         arm.x_goal = ee_data.x;
         arm.x_target = ee_data.x;
+        arm.gripper_goal = 0.0;
+        arm.has_gripper_command = false;
+        arm.gripper_closed_commanded = false;
     };
 
     initialize_arm(left_arm_);
@@ -225,7 +228,9 @@ void RobomimicMove::onDeltaAction(
     if (!msg)
         return;
 
-    const std::size_t expected_dim = arm_mode_ == ArmMode::DUAL ? 14 : 7;
+    const std::size_t single_arm_action_dim = 8;
+    const std::size_t expected_dim =
+        arm_mode_ == ArmMode::DUAL ? 2 * single_arm_action_dim : single_arm_action_dim;
 
     if (msg->data.size() != expected_dim)
     {
@@ -349,18 +354,72 @@ RobomimicMove::compute(
             name_.c_str());
     }
 
-    auto apply_absolute_action = [this, &action](ArmState& arm, std::size_t offset)
+    auto apply_gripper_action = [this](ArmState& arm, double target_gripper)
     {
+        constexpr double close_threshold = 0.02;
+
+        const bool should_close = target_gripper < close_threshold;
+
+        // Avoid repeatedly sending the same gripper command at high frequency.
+        if (
+            arm.has_gripper_command &&
+            arm.gripper_closed_commanded == should_close
+        )
+        {
+            return;
+        }
+
+        if (should_close)
+        {
+            RCLCPP_INFO(
+                node_->get_logger(),
+                "[%s] robomimic gripper → GripperGrasp('%s'), target=%.6f",
+                name_.c_str(),
+                arm.robot_name.c_str(),
+                target_gripper);
+
+            fr3_model_updater_.GripperGrasp(
+                arm.robot_name,
+                0.0,
+                0.1,
+                100.0);
+        }
+        else
+        {
+            RCLCPP_INFO(
+                node_->get_logger(),
+                "[%s] robomimic gripper → GripperOpen('%s'), target=%.6f",
+                name_.c_str(),
+                arm.robot_name.c_str(),
+                target_gripper);
+
+            fr3_model_updater_.GripperOpen(
+                arm.robot_name,
+                0.1);
+        }
+
+        arm.has_gripper_command = true;
+        arm.gripper_closed_commanded = should_close;
+    };
+
+
+
+    auto apply_absolute_action = [this, &action, &apply_gripper_action](ArmState& arm, std::size_t offset)
+    {
+        // Action format per arm:
+        //   [x, y, z, qx, qy, qz, qw, gripper]
         const Eigen::Vector3d target_pos(
             action[offset + 0],
             action[offset + 1],
             action[offset + 2]);
 
         Eigen::Quaterniond target_quat(
-            action[offset + 6],
-            action[offset + 3],
-            action[offset + 4],
-            action[offset + 5]);
+            action[offset + 6],  // qw
+            action[offset + 3],  // qx
+            action[offset + 4],  // qy
+            action[offset + 5]); // qz
+
+        const double target_gripper = action[offset + 7];
 
         const double quat_norm = target_quat.norm();
 
@@ -379,8 +438,19 @@ RobomimicMove::compute(
 
         target_quat.normalize();
 
+        Eigen::Quaterniond current_target_quat(arm.x_target.linear());
+        current_target_quat.normalize();
+
+        if (current_target_quat.dot(target_quat) < 0.0)
+        {
+            target_quat.coeffs() *= -1.0;
+        }
+
         arm.x_goal.translation() = target_pos;
         arm.x_goal.linear() = target_quat.toRotationMatrix();
+
+        arm.gripper_goal = target_gripper;
+        apply_gripper_action(arm, target_gripper);
     };
 
     if (new_command)
@@ -395,8 +465,10 @@ RobomimicMove::compute(
         }
         else
         {
+            const std::size_t single_arm_action_dim = 8;
+
             apply_absolute_action(left_arm_, 0);
-            apply_absolute_action(right_arm_, 7);
+            apply_absolute_action(right_arm_, single_arm_action_dim);
         }
     }
 
