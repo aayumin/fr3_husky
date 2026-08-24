@@ -13,11 +13,13 @@ from fr3_husky_msgs.action import AppleVisionPro
 
 
 class AppleVisionProClient(Node):
-    def __init__(self, disable=False, yaw_only=False, left_off=False, right_off=False):
+    def __init__(self, disable=False, yaw_only=False, left_off=False, right_off=False, controller="fr3_husky"):
         super().__init__('apple_vision_pro_client')
 
-        self._action_name = '/fr3_husky_AVP_tracker'
-        # self._action_name = '/fr3_AVP_tracker'
+        if controller == "fr3_husky":
+            self._action_name = '/fr3_husky_AVP_tracker'
+        else:
+            self._action_name = '/fr3_AVP_tracker'
         self._cancel_service_name = f'{self._action_name}/_action/cancel_goal'
         self._client = ActionClient(self, AppleVisionPro, self._action_name)
         self._cancel_client = self.create_client(CancelGoal, self._cancel_service_name)
@@ -40,16 +42,12 @@ class AppleVisionProClient(Node):
         goal.mode = 0
         goal.left_controller_ee_name = 'left_fr3_hand_tcp'
         goal.right_controller_ee_name = 'right_fr3_hand_tcp'
-        # goal.left_tracking_mode_on = True
-        # goal.right_tracking_mode_on = True
         goal.left_tracking_mode_on = not self._left_off
         goal.right_tracking_mode_on = not self._right_off
         goal.move_orientation = True
         goal.constraint_yaw_only = self._yaw_only
-        # goal.controller_pos_multiplier = 1.0
-        goal.controller_pos_multiplier = 0.8
-        # goal.controller_ori_multiplier = 1.0
-        goal.controller_ori_multiplier = 0.8
+        goal.controller_pos_multiplier = 1.0
+        goal.controller_ori_multiplier = 1.0
 
         self.get_logger().info('Sending AppleVisionPro goal')
         future = self._client.send_goal_async(goal)
@@ -102,6 +100,12 @@ class AppleVisionProClient(Node):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Enable or disable AppleVisionPro teleoperation')
+    parser.add_argument(
+        "--controller",
+        choices=["fr3_husky", "fr3"],
+        default="fr3_husky",
+        help="Controller action-server group to use.",
+    )
     parser.add_argument('--yaw-only', action='store_true')
     parser.add_argument('--left-off', action='store_true')
     parser.add_argument('--right-off', action='store_true')
@@ -128,6 +132,7 @@ def main(args=None):
     del args
     cli_args = parse_args()
     ok = run_apple_vision_pro(
+        controller=cli_args.controller,
         disable=cli_args.disable,
         yaw_only=cli_args.yaw_only,
         left_off=cli_args.left_off,
