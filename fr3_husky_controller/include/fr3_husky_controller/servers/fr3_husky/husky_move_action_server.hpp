@@ -39,6 +39,8 @@ private:
 private:
     FR3HuskyModelUpdater& fr3_husky_model_updater_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr joy_cmd_vel_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr fr3_husky_cmd_vel_sub_;
     Eigen::Vector3d cmd_vel_; // vx, vy, w wrt base frame
 
     Eigen::VectorXd q_hold_; // initial manipulator joint when start action server

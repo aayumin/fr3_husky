@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:macro name="threepieceassembly_voxel"
+                 params="name pos size density material">
+        <geom name="${name}"
+              type="box"
+              pos="${pos}"
+              size="${size}"
+              density="${density}"
+              material="${material}"
+              friction="1.5 0.05 0.01"
+              solref="0.02 1"
+              solimp="0.9 0.95 0.001"/>
+    </xacro:macro>
+
+    <xacro:macro name="threepieceassembly_scene">
+        <!-- <geom pos="-1.2 0 1.5" quat="0.5 0.5 0.5 0.5"
+              size="1.5 1.5 0.01" type="box" conaffinity="0" contype="0"
+              group="1" name="wall_rear_visual" material="walls_mat"/> -->
+        <!-- MimicGen ThreePieceAssembly object set:
+             - table: TableArena-style tabletop with full size (0.8, 0.8, 0.05) and offset z=0.8
+             - base: 5x5 border ring of unit boxes, unit half-size 0.019
+             - piece_1: 3x3 top cap + two vertical rows, unit half-size 0.017
+             - piece_2: 4-layer bridge piece, unit half-size 0.02
+             Placement here is deterministic and chosen to sit on the FR3 Husky top plate. -->
+
+        <body name="threepieceassembly_table" pos="0.9 -0.05 0.6">
+            <geom name="threepieceassembly_table_top"
+                  type="box"
+                  size="0.4 0.6 0.025"
+                  density="500"
+                  material="table_ceramic"
+                  friction="1.5 0.05 0.01"
+                  solref="0.02 1"
+                  solimp="0.9 0.95 0.001"/>
+        </body>
+
+        <body name="base" pos="0.72 0.1 0.67">
+            <freejoint name="base_joint"/>
+            <xacro:threepieceassembly_voxel name="base_0_0_0" pos="-0.076 -0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_0_1" pos="-0.076 -0.038 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_0_2" pos="-0.076 0.0 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_0_3" pos="-0.076 0.038 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_0_4" pos="-0.076 0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_1_0" pos="-0.038 -0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_1_4" pos="-0.038 0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_2_0" pos="0.0 -0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_2_4" pos="0.0 0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_3_0" pos="0.038 -0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_3_4" pos="0.038 0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_4_0" pos="0.076 -0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_4_1" pos="0.076 -0.038 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_4_2" pos="0.076 0.0 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_4_3" pos="0.076 0.038 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+            <xacro:threepieceassembly_voxel name="base_0_4_4" pos="0.076 0.076 0.0" size="0.019 0.019 0.019" density="10000" material="matte_wood_light"/>
+        </body>
+
+        <body name="piece_1" pos="0.72 0.1 0.70" euler="0 0 1.5708">
+            <freejoint name="piece_1_joint"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_0_0" pos="-0.034 -0.034 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_0_1" pos="-0.034 0.0 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_0_2" pos="-0.034 0.034 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_1_0" pos="0.0 -0.034 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_1_1" pos="0.0 0.0 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_1_2" pos="0.0 0.034 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_2_0" pos="0.034 -0.034 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_2_1" pos="0.034 0.0 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_0_2_2" pos="0.034 0.034 -0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_1_1_0" pos="0.0 -0.034 0.0" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_1_1_1" pos="0.0 0.0 0.0" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_1_1_2" pos="0.0 0.034 0.0" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_2_1_0" pos="0.0 -0.034 0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_2_1_1" pos="0.0 0.0 0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+            <xacro:threepieceassembly_voxel name="piece_1_2_1_2" pos="0.0 0.034 0.034" size="0.017 0.017 0.017" density="100" material="obj_blue"/>
+        </body>
+
+        <body name="obj" pos="0.78 -0.28 0.75" euler="0 0 1.5708"> <!-- z-axis : 0 0 1.5708 | y-axis : NONE | x-axis : 0 0 1.5708-->
+            <freejoint name="obj_joint"/>
+            <xacro:threepieceassembly_voxel name="piece_2_0_0_0" pos="-0.04 -0.04 -0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_0_0_1" pos="-0.04 0.0 -0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_0_0_2" pos="-0.04 0.04 -0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_0_2_0" pos="0.04 -0.04 -0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_0_2_1" pos="0.04 0.0 -0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_0_2_2" pos="0.04 0.04 -0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_1_0_0" pos="-0.04 -0.04 -0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_1_0_1" pos="-0.04 0.0 -0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_1_0_2" pos="-0.04 0.04 -0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_1_2_0" pos="0.04 -0.04 -0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_1_2_1" pos="0.04 0.0 -0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_1_2_2" pos="0.04 0.04 -0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_0_0" pos="-0.04 -0.04 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_0_1" pos="-0.04 0.0 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_0_2" pos="-0.04 0.04 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_1_0" pos="0.0 -0.04 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_1_1" pos="0.0 0.0 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_1_2" pos="0.0 0.04 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_2_0" pos="0.04 -0.04 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_2_1" pos="0.04 0.0 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_2_2_2" pos="0.04 0.04 0.02" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+            <xacro:threepieceassembly_voxel name="piece_2_3_1_1" pos="0.0 0.0 0.06" size="0.02 0.02 0.02" density="100" material="obj_red"/>
+        </body>
+    </xacro:macro>
+
+</mujoco>

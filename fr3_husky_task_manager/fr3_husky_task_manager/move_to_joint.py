@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import argparse
+
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
@@ -9,28 +11,56 @@ from fr3_husky_msgs.action import MoveToJoint
 
 
 class MoveToJointClient(Node):
-    def __init__(self):
+    # DEFAULT_LEFT_TARGET_POSITIONS = [0.25, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_RIGHT_TARGET_POSITIONS = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+    # DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+
+    DEFAULT_LEFT_TARGET_POSITIONS = [-0.4, -0.5236, 0.0, -2.0944, 0.0, 1.5708, 0.7854]
+    DEFAULT_RIGHT_TARGET_POSITIONS = [0.4, -0.5236, 0.0, -2.0944, 0.0, 1.5708, 0.7854]
+
+
+
+    # LEFT_CAMERA_POSITIONS = [-0.45, -0.85, 0.3, -2.25, -0.2, 1.42, 2.15]
+    # LEFT_CAMERA_POSITIONS = [-0.95, -0.25, 0.1, -1.35, -0.2, 1.15, 2.0]  ## for coffee scene
+    
+
+    def __init__(
+        self,
+        arm='both',
+        left_target_positions=None,
+        right_target_positions=None,
+        max_velocity_scaling_factor=0.1,
+        max_acceleration_scaling_factor=0.1,
+    ):
         super().__init__('move_to_joint_client')
 
         self._action_name = '/fr3_husky_move_to_joint'
+        # self._action_name = '/fr3_move_to_joint'
         self._client = ActionClient(self, MoveToJoint, self._action_name)
 
         self._goal_handle = None
         self._result_future = None
         self._cancel_requested = False
 
-        self.declare_parameter('arm', 'both')
+        self.declare_parameter('arm', arm)
+        self.declare_parameter('max_velocity_scaling_factor', max_velocity_scaling_factor)
+        self.declare_parameter('max_acceleration_scaling_factor', max_acceleration_scaling_factor)
+
         self.declare_parameter(
             'left_target_positions',
-            # [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
-            [0.25, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+            left_target_positions
+            if left_target_positions is not None
+            # else self.LEFT_CAMERA_POSITIONS,
+            else self.DEFAULT_LEFT_TARGET_POSITIONS,
+            
         )
         self.declare_parameter(
             'right_target_positions',
-            [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+            right_target_positions
+            if right_target_positions is not None
+            else self.DEFAULT_RIGHT_TARGET_POSITIONS,
         )
-        self.declare_parameter('max_velocity_scaling_factor', 0.1)
-        self.declare_parameter('max_acceleration_scaling_factor', 0.1)
 
         self.get_logger().info(f'Waiting for action server: {self._action_name}')
         self._client.wait_for_server()
@@ -151,9 +181,22 @@ class MoveToJointClient(Node):
         self._cancel_requested = True
         return self._goal_handle.cancel_goal_async()
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = MoveToJointClient()
+
+def run_move_to_joint(
+    arm='both',
+    left_target_positions=None,
+    right_target_positions=None,
+    max_velocity_scaling_factor=0.1,
+    max_acceleration_scaling_factor=0.1,
+):
+    rclpy.init()
+    node = MoveToJointClient(
+        arm=arm,
+        left_target_positions=left_target_positions,
+        right_target_positions=right_target_positions,
+        max_velocity_scaling_factor=max_velocity_scaling_factor,
+        max_acceleration_scaling_factor=max_acceleration_scaling_factor,
+    )
 
     try:
         node.send_goal_and_wait()
@@ -174,6 +217,56 @@ def main(args=None):
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+
+
+def main(args=None):
+    del args
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--arm',
+        choices=['left', 'right', 'both'],
+        default='both',
+        help='Target arm.',
+    )
+    parser.add_argument(
+        '--left-target-positions',
+        type=float,
+        nargs=7,
+        default=None,
+        metavar=('J1', 'J2', 'J3', 'J4', 'J5', 'J6', 'J7'),
+        help='Seven target joint positions for the left arm.',
+    )
+    parser.add_argument(
+        '--right-target-positions',
+        type=float,
+        nargs=7,
+        default=None,
+        metavar=('J1', 'J2', 'J3', 'J4', 'J5', 'J6', 'J7'),
+        help='Seven target joint positions for the right arm.',
+    )
+    parser.add_argument(
+        '--max-velocity-scaling-factor',
+        type=float,
+        default=0.1,
+        help='MoveIt max velocity scaling factor.',
+    )
+    parser.add_argument(
+        '--max-acceleration-scaling-factor',
+        type=float,
+        default=0.1,
+        help='MoveIt max acceleration scaling factor.',
+    )
+
+    parsed_args = parser.parse_args()
+    run_move_to_joint(
+        arm=parsed_args.arm,
+        left_target_positions=parsed_args.left_target_positions,
+        right_target_positions=parsed_args.right_target_positions,
+        max_velocity_scaling_factor=parsed_args.max_velocity_scaling_factor,
+        max_acceleration_scaling_factor=parsed_args.max_acceleration_scaling_factor,
+    )
+
 
 if __name__ == '__main__':
     main()

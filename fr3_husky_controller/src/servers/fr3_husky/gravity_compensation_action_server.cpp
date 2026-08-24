@@ -68,14 +68,14 @@ GravityCompensation::ComputeResult GravityCompensation::compute(const rclcpp::Ti
             zero_data[ee_name] = drc::TaskSpaceData::Zero();
             zero_qpid_tracking[ee_name] = Eigen::Vector6d::Zero();
         }
-        fr3_husky_model_updater_.robot_controller_->setQPIDTrackingGain(zero_qpid_tracking);
+        fr3_husky_model_updater_.robot_controller_->moma.setQPIDTrackingGain(zero_qpid_tracking);
     
         Eigen::VectorXd opt_torque, opt_wheel_qddot;
         opt_torque.setZero(model_updater_.manipulator_dof_);
         opt_wheel_qddot.setZero(2);
     
         std::string time_verbose;
-        const bool qp_ok = fr3_husky_model_updater_.robot_controller_->QPID(zero_data, opt_wheel_qddot, opt_torque, time_verbose);
+        const bool qp_ok = fr3_husky_model_updater_.robot_controller_->moma.QPID(zero_data, opt_wheel_qddot, opt_torque, time_verbose);
     
         if (qp_ok)
         {
@@ -117,7 +117,7 @@ GravityCompensation::ComputeResult GravityCompensation::compute(const rclcpp::Ti
 
 void GravityCompensation::onStop(StopReason reason)
 {
-    model_updater_.haltCommands();
+    fr3_husky_model_updater_.haltCommands();
 
     const char* reason_str = "none";
     if (reason == StopReason::CANCELED)

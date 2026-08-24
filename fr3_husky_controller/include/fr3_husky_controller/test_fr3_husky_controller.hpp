@@ -103,8 +103,8 @@ private:
     void haltCommands();
     void setInitfromCurrent();
     void publishFromMobileStateBuffer();
-    void onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
-    bool isJoyConnected() const;
+    void onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
+    bool isEstopJoyConnected() const;
 
     // ========================================================================
     // ===================== Franka & Husky robot Data ========================
@@ -255,6 +255,17 @@ private:
     bool halt_initialized_ = false;
     std::map<std::string, double> halt_position_;
 
+    // ========================================================================
+    // ========================== Update Timing ================================
+    // ========================================================================
+    static constexpr double   kUpdatePeriodMs             = 1.0;
+    static constexpr int      kUpdateWindowSize           = 1000;
+    static constexpr int      kUpdateOverrunWarnThreshold = 10;
+    int    update_cycle_count_    = 0;
+    int    update_overrun_count_  = 0;
+    double update_overrun_sum_ms_ = 0.0;
+    double update_overrun_max_ms_ = 0.0;
+
     struct WheelHandle
     {
         std::vector<std::reference_wrapper<const hardware_interface::LoanedStateInterface>> state;
@@ -276,8 +287,8 @@ private:
     // ========================================================================
     // =============================== E-Stop =================================
     // ========================================================================
-    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_subscriber_ = nullptr;
-    std::atomic<bool> joy_msg_received_{false};
+    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr estop_joy_subscriber_ = nullptr;
+    std::atomic<bool> estop_joy_msg_received_{false};
     std::atomic<bool> estop_button_pressed_{false};
     bool estop_is_active_{false};
     bool estop_button_index_warned_{false};

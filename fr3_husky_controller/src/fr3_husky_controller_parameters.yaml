@@ -108,6 +108,11 @@ fr3_husky_controller:
     default_value: true,
     description: "Enable joystick-based e-stop for mobile wheel commands.",
   }
+  estop_joy_topic: {
+    type: string,
+    default_value: "/joy",
+    description: "Joy topic used only for e-stop button state. Keep this separate from pedal teleop /joy when both are used.",
+  }
   estop_button_index: {
     type: int,
     default_value: 0,

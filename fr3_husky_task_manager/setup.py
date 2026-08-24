@@ -25,7 +25,18 @@ setup(
     entry_points={
         'console_scripts': [
             'apple_vision_pro = fr3_husky_task_manager.apple_vision_pro:main',
+            'keyboard_move = fr3_husky_task_manager.keyboard_move:main',
+            'husky_pedal = fr3_husky_task_manager.husky_pedal:main',
             'move_to_joint = fr3_husky_task_manager.move_to_joint:main',
+            'task_space_move = fr3_husky_task_manager.task_space_move:main',
+            'task_space_delta_move = fr3_husky_task_manager.task_space_delta_move:main',
+            'contact_guarded_motion = fr3_husky_task_manager.contact_guarded_motion:main',
+            'contact_guarded_delta_motion = fr3_husky_task_manager.contact_guarded_delta_motion:main',
+            'nut_tightening = fr3_husky_task_manager.nut_tightening:main',
+            'screw = fr3_husky_task_manager.screw:main',
+            'gripper_move = fr3_husky_task_manager.gripper_move:main',
+            'log = fr3_husky_task_manager.live_log:main',
+            'image = fr3_husky_task_manager.image_streaming:main',
         ],
     },
 )

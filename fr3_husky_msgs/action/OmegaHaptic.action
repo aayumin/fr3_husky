@@ -1,7 +1,9 @@
 # Define the goal
-int8 mode 0                          # 0: CLIK, 1: OSF, 2:QPIK, 3:QPID (default: 0)
+int8 control_mode 0                  # 0: CLIK, 1: OSF, 2:QPIK, 3:QPID (default: 0)
+int8 teleop_mode 1                   # 0: Base, 1: Arm, 2: Wholebody, 3:Dual (default: 1)
 string ee_name                       # EE name for tracking haptic twist 
 bool move_orientation False          # move EE orientation or not (default: False)
+
 float32 haptic_pos_multiplier 1.0     # multiplier for target position from haptic (default: 1.0)
 float32 haptic_ori_multiplier 1.0     # multiplier for target orientation from haptic (default: 1.0)
 float32 haptic_lin_vel_multiplier 1.0 # multiplier for target linear velocity from haptic (default: 1.0)

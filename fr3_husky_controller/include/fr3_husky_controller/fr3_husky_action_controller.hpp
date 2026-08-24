@@ -2,12 +2,14 @@
 
 #include <string>
 #include <chrono>
+#include <thread>
 #include <array>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <cassert>
 #include <cmath>
+#include <random>
 #include <exception>
 #include <map>
 #include <functional>
@@ -15,11 +17,14 @@
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <filesystem>
 #include <type_traits>
 #include <Eigen/Eigen>
 #include <queue>
 #include <utility>
 #include <cstdlib>
+
+#include <mujoco/mujoco.h>
 
 #if __cplusplus < 201703L
 // Fallback for toolchains/IntelliSense not using C++17.
@@ -116,8 +121,8 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         // ====================== Main Controller Functions =======================
         // ========================================================================
         bool setJointIndex(const std::string& urdf_xml, drc::MobileManipulator::JointIndex& out_idx);
-        void onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
-        bool isJoyConnected() const;
+        void onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
+        bool isEstopJoyConnected() const;
 
         // ========================================================================
         // ===================== Franka & Husky robot Data ========================
@@ -136,9 +141,30 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         size_t num_robots_{0}; // number of FR3 arms
         double dt_{0.0};
         double play_time_{0.0};
-        double control_start_time_{0.0};
+        double teleop_task_start_time_{-1.0};
+        double task_timeout_{300.0}; // seconds
+        bool task_shutdown_requested_{false};
+
 
         const std::string arm_id_{"fr3"};
+
+
+
+        // ========================================================================
+        // ========================== Task Success Check ==========================
+        // ========================================================================
+        bool isBodyNearBody(mjModel* model, mjData* data, const std::string& body_a, const std::string& body_b, double threshold);
+        bool isSiteNearSite(mjModel* model, mjData* data, const std::string& site_a, const std::string& site_b, double threshold);
+
+
+
+        // ========================================================================
+        // =========================== Initialization =============================
+        // ========================================================================
+        std::mutex heavy_init_mutex_;
+        bool heavy_init_done_{false};
+        controller_interface::CallbackReturn initialize_heavy_resources();
+        bool object_randomized_ = false;
 
         // ========================================================================
         // ============================== Parameters ==============================
@@ -184,8 +210,8 @@ class FR3HuskyActionController : public controller_interface::ControllerInterfac
         // ========================================================================
         // =============================== E-Stop =================================
         // ========================================================================
-        rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_subscriber_ = nullptr;
-        std::atomic<bool> joy_msg_received_{false};
+        rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr estop_joy_subscriber_ = nullptr;
+        std::atomic<bool> estop_joy_msg_received_{false};
         std::atomic<bool> estop_button_pressed_{false};
         bool estop_is_active_{false};
         bool estop_button_index_warned_{false};

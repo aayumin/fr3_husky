@@ -38,14 +38,14 @@
     <!-- RealSense D435i resolution -->
     <xacro:arg name="d435i_color_width"  default="1280"/>
     <xacro:arg name="d435i_color_height" default="720"/>
-    <xacro:arg name="d435i_depth_width"  default="848"/>
-    <xacro:arg name="d435i_depth_height" default="480"/>
+    <xacro:arg name="d435i_depth_width"  default="0"/>
+    <xacro:arg name="d435i_depth_height" default="0"/>
 
     <!-- Azure Kinect DK resolution -->
     <xacro:arg name="azure_color_width"  default="1920"/>
     <xacro:arg name="azure_color_height" default="1080"/>
-    <xacro:arg name="azure_depth_width"  default="640"/>
-    <xacro:arg name="azure_depth_height" default="576"/>
+    <xacro:arg name="azure_depth_width"  default="0"/>
+    <xacro:arg name="azure_depth_height" default="0"/>
     <!-- ============================================================= -->
     <xacro:arg name="arm_id" default="fr3" />
     <xacro:property name="arm_ids_str" value="fr3 fr3" />
@@ -107,6 +107,7 @@
             hand_vis_mesh_materials="['off_white','black','black','white','off_white']"
             finger_vis_mesh_materials="['off_white','black']">
             <cam_body>
+                <body name="${arm_prefix}_fr3_hand_tcp" pos="0 0 0.1034"/>
                 <xacro:if value="$(arg with_realsense)">
                     <xacro:realsense_d435i_mjcf prefix="${arm_prefix}" ee2cam_tf="${ee2cam_tf}"
                         color_width="$(arg d435i_color_width)"
@@ -126,9 +127,9 @@
 
     <!-- ── Visual ── -->
     <visual>
-        <headlight ambient="0.4 0.4 0.4" diffuse="0.8 0.8 0.8" specular="0.1 0.1 0.1" />
-        <rgba haze="0.15 0.25 0.35 1" />
-        <global azimuth="150" elevation="-20" />
+        <headlight ambient="0.55 0.55 0.55" diffuse="0.35 0.35 0.35" specular="0.02 0.02 0.02"/>
+        <rgba haze="0.15 0.25 0.35 1"/>
+        <global azimuth="150" elevation="-20"/>
     </visual>
 
     <!-- Default classes -->
@@ -162,7 +163,32 @@
         <texture type="2d" name="groundplane" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
                  width="300" height="300" mark="edge" markrgb="0.8 0.8 0.8" />
         <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2" />
+        <material name="table_brown" rgba="0.55 0.27 0.07 1" />
+        <material name="env_red" rgba="1 0.072272 0.039546 1" />
+        <material name="env_blue" rgba="0.024157 0.445201 0.737911 1" />
+        <material name="ring_gray" rgba="0.85 0.85 0.85 1" />
+        <mesh name="table_mesh" file="$(find fr3_husky_description)/meshes/table.stl" scale="0.5 0.5 0.4" />
+        <mesh name="bowl_mesh" file="$(find fr3_husky_description)/meshes/cup_nohandle.stl" scale="1.2 1.2 0.05" />
+        <texture file="$(find fr3_husky_description)/textures/ceramic.png" type="cube" name="tex-ceramic"/>
+        <material name="table_ceramic" reflectance="0.0" shininess="0.0" specular="0.2" texrepeat="1 1" texture="tex-ceramic"/>
 
+
+
+        <!-- matte object -->
+        <texture file="$(find fr3_husky_description)/textures/cement.png" type="2d" name="tex-cement"/>
+        <texture file="$(find fr3_husky_description)/textures/white-stucco-wall.png" type="2d" name="tex-white-stucco-wall"/>
+        <texture file="$(find fr3_husky_description)/textures/old-paper-wall.png" type="2d" name="tex-old-paper-wall"/>
+        <texture file="$(find fr3_husky_description)/textures/white-space.png" type="2d" name="tex-white-space"/>
+        <texture file="$(find fr3_husky_description)/textures/white-wood.png" type="2d" name="tex-white-wood"/>
+        <material name="obj_red" rgba="0.72 0.28 0.25 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>   
+        <material name="obj_blue" rgba="0.28 0.42 0.72 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>
+        <material name="obj_green" rgba="0.32 0.60 0.38 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>
+        <material name="obj_yellow" rgba="0.78 0.66 0.25 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-space"/>
+        <material name="matte_wood_dark" rgba="0.47 0.39 0.30 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-wood"/>
+        <material name="matte_wood_light" rgba="0.72 0.62 0.51 1" specular="0.02" shininess="0.02" reflectance="0.0" texture="tex-white-wood"/>
+
+
+        
         <xacro:fr3_assets arm_id="$(arg arm_id)"/>
         <xacro:franka_hand_assets/>
         <xacro:husky_assets/>
@@ -179,6 +205,23 @@
     <worldbody>
         <!-- ground plane -->
         <geom name="floor" type="plane" size="0 0 0.05" material="groundplane" />
+
+        <!-- Environment objects from tmm_mujoco/robots/dual_fr3_husky_env.xml -->
+        <geom name="table" type="mesh" mesh="table_mesh" material="table_ceramic" pos="1 -0.05 0" />
+        <body name="blue_bowl_body" pos="0.75 -0.4 0.555">
+            <geom name="blue_bowl_geom" type="mesh" mesh="bowl_mesh" material="obj_blue" mass="0.2" />
+        </body>
+        <body name="red_bowl_body" pos="0.75 0.2 0.555">
+            <geom name="red_bowl_geom" type="mesh" mesh="bowl_mesh" material="obj_red" mass="0.2" />
+        </body>
+        <body name="obj" pos="0.78 0.14 0.62">
+            <freejoint name="obj_joint"/>
+            <!-- <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="env_blue" mass="0.05" /> -->
+            <geom name="blue_cylinder_geom" type="cylinder" size="0.03 0.03" material="obj_blue" mass="0.05"  
+                friction="1.0 0.005 0.001" solref="0.02 1"  solimp="0.9 0.95 0.001 0.5 2" />
+            
+
+        </body>
 
         <body name="root" pos="0 0 0">
             <joint name="world_joint" type="free" stiffness="0" damping="0" frictionloss="0" armature="0" />
@@ -214,6 +257,13 @@
             </xacro:husky>
         </body>
     </worldbody>
+
+    <equality>
+        <weld name="weld_right_tcp" body1="right_fr3_hand_tcp" body2="obj"
+              active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
+        <weld name="weld_left_tcp" body1="left_fr3_hand_tcp" body2="obj"
+              active="false" solref="0.02 1" solimp="0.9 0.95 0.001"/>
+    </equality>
 
     <!-- Wheel actuators -->
     <xacro:husky_wheel_actuator prefix="" as_two_wheels="false"/>

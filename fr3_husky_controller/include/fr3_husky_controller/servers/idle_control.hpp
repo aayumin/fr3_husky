@@ -7,6 +7,7 @@
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 
 #include <fr3_husky_controller/model/model_updater_base.hpp>
+#include <fr3_husky_controller/model/fr3_husky_model_updater.hpp>
 
 namespace fr3_husky_controller::servers
 {
@@ -28,8 +29,12 @@ class IdleControl
         std::string name_;
         NodePtr node_;
         ModelUpdaterBase& model_updater_;
+        FR3HuskyModelUpdater* fr3_husky_model_updater_{nullptr};
+
+        Eigen::VectorXd q_hold_;
 
         bool was_idle_{false};
+        bool hold_initialized_{false};
 };
 
 }  // namespace fr3_husky_controller::servers

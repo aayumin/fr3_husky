@@ -169,8 +169,8 @@ private:
     void haltCommands();
     void setInitfromCurrent();
     void publishFromMobileStateBuffer();
-    void onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
-    bool isJoyConnected() const;
+    void onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg);
+    bool isEstopJoyConnected() const;
 
     // ========================================================================
     // ===================== Franka & Husky robot Data ========================
@@ -342,8 +342,8 @@ private:
     // ========================================================================
     // =============================== E-Stop =================================
     // ========================================================================
-    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_subscriber_ = nullptr;
-    std::atomic<bool> joy_msg_received_{{false}};
+    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr estop_joy_subscriber_ = nullptr;
+    std::atomic<bool> estop_joy_msg_received_{{false}};
     std::atomic<bool> estop_button_pressed_{{false}};
     bool estop_is_active_{{false}};
     bool estop_button_index_warned_{{false}};
@@ -670,13 +670,16 @@ CallbackReturn {class_name}::on_configure(const rclcpp_lifecycle::State& /*previ
     publish_rate_ = params_.publish_rate;
     mobi_state_pub_buf_.writeFromNonRT(std::make_pair(base_pose_w_, base_vel_b_));
 
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
     estop_button_pressed_.store(false, std::memory_order_release);
     estop_is_active_ = false;
     estop_button_index_warned_ = false;
-    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
-        "/joy", rclcpp::SystemDefaultsQoS(),
-        std::bind(&{class_name}::onJoyMessage, this, std::placeholders::_1));
+    if (params_.use_estop)
+    {{
+        estop_joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+            params_.estop_joy_topic, rclcpp::SystemDefaultsQoS(),
+            std::bind(&{class_name}::onEstopJoyMessage, this, std::placeholders::_1));
+    }}
 
     odom_timer_ = get_node()->create_wall_timer(
         std::chrono::duration<double>(1.0 / publish_rate_),
@@ -824,7 +827,7 @@ controller_interface::CallbackReturn {class_name}::on_deactivate(const rclcpp_li
     odom_timer_.reset();
     estop_is_active_ = false;
     estop_button_pressed_.store(false, std::memory_order_release);
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
 
     return CallbackReturn::SUCCESS;
 }}
@@ -884,7 +887,7 @@ controller_interface::return_type {class_name}::update(const rclcpp::Time& /*tim
     // -------------------------------------------------------------------------
 
     const bool estop_pressed = params_.use_estop &&
-                               joy_msg_received_.load(std::memory_order_acquire) &&
+                               estop_joy_msg_received_.load(std::memory_order_acquire) &&
                                estop_button_pressed_.load(std::memory_order_acquire);
     if (estop_pressed && !estop_is_active_)
     {{
@@ -1313,9 +1316,9 @@ void {class_name}::publishFromMobileStateBuffer()
     }}
 }}
 
-void {class_name}::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
+void {class_name}::onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
 {{
-    joy_msg_received_.store(true, std::memory_order_release);
+    estop_joy_msg_received_.store(true, std::memory_order_release);
     if (!msg)
     {{
         estop_button_pressed_.store(false, std::memory_order_release);
@@ -1336,9 +1339,9 @@ void {class_name}::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
     estop_button_pressed_.store(msg->buttons[static_cast<size_t>(idx)] != 0, std::memory_order_release);
 }}
 
-bool {class_name}::isJoyConnected() const
+bool {class_name}::isEstopJoyConnected() const
 {{
-    return joy_subscriber_ && joy_subscriber_->get_publisher_count() > 0;
+    return estop_joy_subscriber_ && estop_joy_subscriber_->get_publisher_count() > 0;
 }}
 
 }}  // namespace fr3_husky_controller
@@ -1498,6 +1501,7 @@ HUSKY_COMMON_PARAMS = """\
       publish_rate: 50.0
 
       use_estop: true
+      estop_joy_topic: /estop_joy
       estop_button_index: 4
 
       linear.x.max_velocity: 1.0

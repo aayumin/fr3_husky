@@ -1,16 +1,20 @@
+#   ros2 launch fr3_husky_controller fr3_husky_action_controller.launch.py robot_side:=dual load_gripper:=true use_mujoco:=true pedal:=true
+
 import os
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+
 import yaml
 import xacro
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, Shutdown, LogInfo
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-
 
 def _load_yaml(package_name, rel_path):
     path = os.path.join(get_package_share_directory(package_name), rel_path)
@@ -54,16 +58,51 @@ def _normalize_robot_sides(robot_sides):
     return normalized
 
 
+def _resolve_auto_bool(raw_value, auto_value, arg_name):
+    value = raw_value.strip().lower()
+    if value == 'auto':
+        return auto_value
+    if value in ('true', '1', 'yes', 'on'):
+        return True
+    if value in ('false', '0', 'no', 'off'):
+        return False
+    raise RuntimeError(f"{arg_name} must be 'auto', 'true', or 'false'.")
+
+
+def _resolve_bool(raw_value, arg_name):
+    value = raw_value.strip().lower()
+    if value in ('true', '1', 'yes', 'on'):
+        return True
+    if value in ('false', '0', 'no', 'off'):
+        return False
+    raise RuntimeError(f"{arg_name} must be 'true' or 'false'.")
+
+
 def _launch_setup(context, *args, **kwargs):
     robot_sides = _normalize_robot_sides(
         _parse_robot_side(LaunchConfiguration('robot_side').perform(context))
     )
     use_mujoco           = LaunchConfiguration('use_mujoco').perform(context)
+    use_mujoco_enabled   = use_mujoco.lower() == 'true'
     load_gripper         = LaunchConfiguration('load_gripper').perform(context)
     use_fake_hardware    = LaunchConfiguration('use_fake_hardware').perform(context)
     fake_sensor_commands = LaunchConfiguration('fake_sensor_commands').perform(context)
     namespace            = LaunchConfiguration('namespace').perform(context)
+    joy_dev              = LaunchConfiguration('joy_dev')
+    joy_topic            = LaunchConfiguration('joy_topic').perform(context)
+    local_joy_topic      = LaunchConfiguration('local_joy_topic').perform(context)
+    launch_local_joy     = LaunchConfiguration('launch_local_joy').perform(context)
+    pedal                = LaunchConfiguration('pedal').perform(context)
     launch_move_group    = LaunchConfiguration('launch_move_group').perform(context)
+    launch_avp_bridge    = LaunchConfiguration('launch_avp_bridge')
+    avp_bridge_script    = LaunchConfiguration('avp_bridge_script')
+    avp_udp_ip           = LaunchConfiguration('avp_udp_ip')
+    avp_udp_port         = LaunchConfiguration('avp_udp_port')
+    avp_frame_id         = LaunchConfiguration('avp_frame_id')
+    launch_avp_image_bridge = LaunchConfiguration('launch_avp_image_bridge')
+    # avp_image_bridge_script = LaunchConfiguration('avp_image_bridge_script')
+    # recognized_speech_webrtc_script = LaunchConfiguration('recognized_speech_webrtc_script')
+    avp_image_max_fps       = LaunchConfiguration('avp_image_max_fps')
 
     if not robot_sides:
         raise RuntimeError("robot_side must be 'left', 'right', or 'dual'.")
@@ -74,6 +113,9 @@ def _launch_setup(context, *args, **kwargs):
         raise RuntimeError("robot_side entries must be unique.")
 
     is_dual = len(robot_sides) == 2
+    launch_local_joy_enabled = _resolve_auto_bool(
+        launch_local_joy, True, 'launch_local_joy')
+    pedal_enabled = _resolve_bool(pedal, 'pedal')
 
     pkg_desc = get_package_share_directory('fr3_husky_description')
     pkg_ctrl = get_package_share_directory('fr3_husky_controller')
@@ -81,7 +123,14 @@ def _launch_setup(context, *args, **kwargs):
     # URDF + MJCF paths 
     if is_dual:
         urdf_path = os.path.join(pkg_desc, 'robots', 'dual_fr3_husky.urdf.xacro')
-        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_square.xml.xacro')
+        mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_nut.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threading.xml.xacro')   # too hard
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_yaw.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_threepieceassembly.xml.xacro')
+        # mjcf_path = os.path.join(pkg_desc, 'mjcf', 'dual_fr3_husky_coffee.xml.xacro')
+
         xacro_mappings = {
             'ros2_control': 'true', 'with_sc': 'false', 'fix_finger': 'false',
             'hand': load_gripper, 'virtual_joint': 'false', 'as_two_wheels': 'false',
@@ -122,6 +171,7 @@ def _launch_setup(context, *args, **kwargs):
         cm_params.extend([
             {'mujoco_scene_xacro_path': mjcf_path},
             {'mujoco_scene_xacro_args': xacro_args},
+            os.path.join(pkg_ctrl, 'config', 'fr3_husky_ros_controllers_mujoco.yaml'),
         ])
 
     # robot_state_publisher: direct subscription when using MuJoCo
@@ -140,6 +190,16 @@ def _launch_setup(context, *args, **kwargs):
 
     # Node list
     nodes = [
+        LogInfo(
+            msg=(
+                f"[fr3_husky_action_controller.launch] "
+                f"use_mujoco={use_mujoco_enabled}, "
+                f"pedal={pedal_enabled}, "
+                f"launch_local_joy={launch_local_joy_enabled}, "
+                f"joy_topic={joy_topic}, "
+                f"local_joy_topic={local_joy_topic}"
+            ),
+        ),
         Node(
             package='rviz2',
             executable='rviz2',
@@ -161,7 +221,10 @@ def _launch_setup(context, *args, **kwargs):
             executable='ros2_control_node',
             namespace=namespace,
             parameters=cm_params,
-            remappings=[('joint_states', joint_states_topic)],
+            remappings=[
+                ('joint_states', joint_states_topic),
+                (f'/{main_controller}/odom', '/odom'),
+            ],
             output='screen',
             on_exit=Shutdown(),
         ),
@@ -180,14 +243,14 @@ def _launch_setup(context, *args, **kwargs):
             package='controller_manager',
             executable='spawner',
             namespace=namespace,
-            arguments=['joint_state_broadcaster', '--controller-manager-timeout', '60'],
-            output='screen',
-        ),
-        Node(
-            package='controller_manager',
-            executable='spawner',
-            namespace=namespace,
-            arguments=[main_controller, '--controller-manager-timeout', '60'],
+            arguments=[
+                'joint_state_broadcaster',
+                main_controller,
+                '--controller-manager-timeout', '60',
+                '--service-call-timeout', '120',
+                '--switch-timeout', '120',
+                '--activate-as-group',
+            ],
             output='screen',
         ),
         # husky teleop/mux: relevant for both real hardware and MuJoCo
@@ -198,24 +261,6 @@ def _launch_setup(context, *args, **kwargs):
             remappings=[('/cmd_vel_out', f'/{main_controller}/cmd_vel_unstamped')],
             parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'twist_mux.yaml'])],
         ),
-        # joy_node without namespace → publishes /joy (required by controller e-stop)
-        Node(
-            package='joy',
-            executable='joy_node',
-            name='joy_node',
-            output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
-        ),
-        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_node above
-        Node(
-            namespace='joy_teleop',
-            package='teleop_twist_joy',
-            executable='teleop_node',
-            name='teleop_twist_joy_node',
-            output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
-            remappings=[('joy', '/joy')],
-        ),
         # husky_control (robot_localization): real hardware only
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -223,7 +268,76 @@ def _launch_setup(context, *args, **kwargs):
             ),
             condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('use_mujoco'), "' == 'true'"])),
         ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                avp_bridge_script,
+                '--ros-args',
+                '-p', ['udp_ip:=', avp_udp_ip],
+                '-p', ['udp_port:=', avp_udp_port],
+                '-p', ['frame_id:=', avp_frame_id],
+            ],
+            name='mac2linux_avp_bridge',
+            output='screen',
+            condition=IfCondition(launch_avp_bridge),
+        ),
+        # ExecuteProcess(
+        #     cmd=[
+        #         'python3',
+        #         '-u',
+        #         '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/publish_image_camera2avp_webrtc.py',
+        #         '--host', '0.0.0.0',
+        #         '--port', '8080',
+        #         '--max_fps', avp_image_max_fps,
+        #         '--max_width','640',
+        #     ],
+        #     name='camera2avp_webrtc',
+        #     output='screen',
+        # ),
+        # ExecuteProcess(
+        #     cmd=[
+        #         'python3',
+        #         '-u',
+        #         '/root/ros2_ws/src/fr3_husky/fr3_husky_controller/scripts/speech_webrtc.py',
+        #         '--host', '0.0.0.0',
+        #         '--port', '8081',
+        #         '--file', '/root/ssds_HL/recognized_speech.txt',
+        #         '--poll-hz', '20',
+        #     ],
+        #     output='screen',
+        # )
+
+        
     ]
+
+    if pedal_enabled:
+        nodes.append(
+            # External pedal Joy input owns /joy. Local PS4 stays on /estop_joy.
+            Node(
+                namespace='joy_teleop',
+                package='teleop_twist_joy',
+                executable='teleop_node',
+                name='teleop_twist_joy_node',
+                output='screen',
+                parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+                remappings=[('joy', joy_topic)],
+            )
+        )
+
+    if launch_local_joy_enabled:
+        nodes.insert(
+            1,
+            # Start local PS4 e-stop input before controller activation.
+            # It stays off /joy so external pedal Joy messages can own /joy.
+            Node(
+                package='joy_linux',
+                executable='joy_linux_node',
+                name='joy_node',
+                output='screen',
+                parameters=[{'dev': joy_dev}],
+                remappings=[('joy', local_joy_topic)],
+            ),
+        )
 
     # franka_robot_state_broadcaster: real hardware only (skip for fake or mujoco)
     for broadcaster_name in franka_broadcaster_names:
@@ -272,10 +386,15 @@ def _launch_setup(context, *args, **kwargs):
             srdf_path    = os.path.join(pkg_desc, 'robots', 'dual_fr3_husky.srdf.xacro')
             urdf_mg_map  = {'ros2_control': 'false', 'with_sc': 'false', 'fix_finger': 'false',
                             'hand': load_gripper, 'virtual_joint': 'false', 'as_two_wheels': 'false'}
-            srdf_map     = {'hand': load_gripper}
+            srdf_map     = {'hand': load_gripper, 'with_sc': 'false', 'as_two_wheels': 'false'}
             cfg_sub      = 'dual'
             ctrl_yaml    = os.path.join('config', 'dual', 'dual_fr3_husky_controllers.yaml')
             jsp_src      = ['dual_fr3_husky/joint_states']
+            joint_limits = {
+                'robot_description_planning': _load_yaml(
+                    'fr3_husky_moveit_config', os.path.join('config', 'dual', 'dual_fr3_joint_limits.yaml')
+                )
+            }
         else:
             robot_side   = robot_sides[0]
             urdf_mg_path = os.path.join(pkg_desc, 'robots', 'single_fr3_husky.urdf.xacro')
@@ -283,10 +402,15 @@ def _launch_setup(context, *args, **kwargs):
             urdf_mg_map  = {'ros2_control': 'false', 'with_sc': 'false', 'fix_finger': 'false',
                             'side': robot_side, 'hand': load_gripper,
                             'virtual_joint': 'false', 'as_two_wheels': 'false'}
-            srdf_map     = {'side': robot_side, 'hand': load_gripper}
+            srdf_map     = {'side': robot_side, 'hand': load_gripper, 'with_sc': 'false', 'as_two_wheels': 'false'}
             cfg_sub      = robot_side
             ctrl_yaml    = os.path.join('config', robot_side, 'single_fr3_husky_controllers.yaml')
             jsp_src      = [f'{robot_side}_fr3_husky/joint_states']
+            joint_limits = {
+                'robot_description_planning': _load_yaml(
+                    'fr3_husky_moveit_config', os.path.join('config', cfg_sub, 'single_fr3_joint_limits.yaml')
+                )
+            }
 
         mg_robot_desc = xacro.process_file(urdf_mg_path, mappings=urdf_mg_map).toprettyxml(indent='  ')
         mg_srdf       = xacro.process_file(srdf_path, mappings=srdf_map).toprettyxml(indent='  ')
@@ -294,43 +418,85 @@ def _launch_setup(context, *args, **kwargs):
         ompl_yaml     = _load_yaml('fr3_husky_moveit_config', os.path.join('config', 'ompl_planning.yaml'))
         ctrl_mgr_yaml = _load_yaml('fr3_husky_moveit_config', ctrl_yaml)
 
-        ompl_cfg = {
-            'move_group': {
-                'planning_plugin': 'ompl_interface/OMPLPlanner',
-                'request_adapters':
-                    'default_planner_request_adapters/AddTimeOptimalParameterization '
-                    'default_planner_request_adapters/ResolveConstraintFrames '
-                    'default_planner_request_adapters/FixWorkspaceBounds '
-                    'default_planner_request_adapters/FixStartStateBounds '
-                    'default_planner_request_adapters/FixStartStateCollision '
-                    'default_planner_request_adapters/FixStartStatePathConstraints',
-                'start_state_max_bounds_error': 0.1,
+        if os.environ['ROS_DISTRO'] == 'humble':
+            ompl_cfg = {
+                'move_group': {
+                    'planning_plugin': 'ompl_interface/OMPLPlanner',
+                    'request_adapters':
+                        'default_planner_request_adapters/AddTimeOptimalParameterization '
+                        'default_planner_request_adapters/ResolveConstraintFrames '
+                        'default_planner_request_adapters/FixWorkspaceBounds '
+                        'default_planner_request_adapters/FixStartStateBounds '
+                        'default_planner_request_adapters/FixStartStateCollision '
+                        'default_planner_request_adapters/FixStartStatePathConstraints',
+                    'start_state_max_bounds_error': 0.1,
+                }
             }
-        }
-        ompl_cfg['move_group'].update(ompl_yaml)
+            ompl_cfg['move_group'].update(ompl_yaml)
 
-        nodes.append(Node(
-            package='moveit_ros_move_group',
-            executable='move_group',
-            namespace=namespace,
-            output='screen',
-            parameters=[
-                {'robot_description': mg_robot_desc},
-                {'robot_description_semantic': mg_srdf},
-                # kinematics,
-                {'robot_description_kinematics': kinematics},
-                ompl_cfg,
-                {'moveit_manage_controllers': False,
-                 'trajectory_execution.allowed_execution_duration_scaling': 1.2,
-                 'trajectory_execution.allowed_goal_duration_margin': 0.5,
-                 'trajectory_execution.allowed_start_tolerance': 0.01},
-                {'moveit_simple_controller_manager': ctrl_mgr_yaml,
-                 'moveit_controller_manager':
-                     'moveit_simple_controller_manager/MoveItSimpleControllerManager'},
-                {'publish_planning_scene': True, 'publish_geometry_updates': True,
-                 'publish_state_updates': True, 'publish_transforms_updates': True},
-            ],
-        ))
+            nodes.append(Node(
+                package='moveit_ros_move_group',
+                executable='move_group',
+                namespace=namespace,
+                output='screen',
+                parameters=[
+                    {'robot_description': mg_robot_desc},
+                    {'robot_description_semantic': mg_srdf},
+                    kinematics,
+                    ompl_cfg,
+                    {'moveit_manage_controllers': False,
+                     'trajectory_execution.allowed_execution_duration_scaling': 1.2,
+                     'trajectory_execution.allowed_goal_duration_margin': 0.5,
+                     'trajectory_execution.allowed_start_tolerance': 0.01},
+                    {'moveit_simple_controller_manager': ctrl_mgr_yaml,
+                     'moveit_controller_manager':
+                         'moveit_simple_controller_manager/MoveItSimpleControllerManager'},
+                    {'publish_planning_scene': True, 'publish_geometry_updates': True,
+                     'publish_state_updates': True, 'publish_transforms_updates': True},
+                ],
+            ))
+        else:
+            ompl_cfg = {
+                'move_group': {
+                    'planning_plugins': ['ompl_interface/OMPLPlanner'],
+                    'request_adapters': [
+                        'default_planning_request_adapters/ResolveConstraintFrames',
+                        'default_planning_request_adapters/ValidateWorkspaceBounds',
+                        'default_planning_request_adapters/CheckStartStateBounds',
+                        'default_planning_request_adapters/CheckStartStateCollision',
+                                        ],
+                    'response_adapters': [
+                        'default_planning_response_adapters/AddTimeOptimalParameterization',
+                        'default_planning_response_adapters/ValidateSolution',
+                        'default_planning_response_adapters/DisplayMotionPath'
+                                        ],
+                    'start_state_max_bounds_error': 0.1,
+                }
+            }
+            ompl_cfg['move_group'].update(ompl_yaml)
+
+            nodes.append(Node(
+                package='moveit_ros_move_group',
+                executable='move_group',
+                namespace=namespace,
+                output='screen',
+                parameters=[
+                    {'robot_description': mg_robot_desc},
+                    {'robot_description_semantic': mg_srdf},
+                    {'robot_description_kinematics': kinematics},
+                    joint_limits,
+                    ompl_cfg,
+                    {'moveit_manage_controllers': False,
+                     'trajectory_execution.allowed_execution_duration_scaling': 1.2,
+                     'trajectory_execution.allowed_goal_duration_margin': 0.5,
+                     'trajectory_execution.allowed_start_tolerance': 0.01},
+                    {'moveit_simple_controller_manager': ctrl_mgr_yaml,
+                     'moveit_controller_manager':
+                         'moveit_simple_controller_manager/MoveItSimpleControllerManager'},
+                    {'publish_planning_scene': True, 'publish_geometry_updates': True,
+                     'publish_state_updates': True, 'publish_transforms_updates': True},
+                ],
+            ))
 
         # MuJoCo: bridge {topic}/joint_states → joint_states for move_group's scene monitor
         if use_mujoco.lower() == 'true':
@@ -350,10 +516,35 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot_side',        default_value='left',  description="Robot side: left, right, or dual"),
         DeclareLaunchArgument('namespace',         default_value='',      description='Namespace for the robot'),
+        DeclareLaunchArgument('joy_dev',           default_value='/dev/input/js0', description='Joystick device for joy_linux'),
+        DeclareLaunchArgument('joy_topic',         default_value='/joy', description='Joy topic consumed for external Husky teleop input'),
+        DeclareLaunchArgument('local_joy_topic',   default_value='/estop_joy', description='Topic published by local joy_linux, typically PS4 R1 e-stop input'),
+        DeclareLaunchArgument('launch_local_joy',  default_value='true',  description="Launch local joy_linux for PS4 e-stop input: auto, true, or false. auto resolves to true."),
+        DeclareLaunchArgument('pedal',             default_value='false', description='Use external pedal Joy input on joy_topic for Husky teleop'),
         DeclareLaunchArgument('load_gripper',      default_value='true',  description='Load gripper (true/false)'),
         DeclareLaunchArgument('use_mujoco',        default_value='false', description='Use MuJoCo hardware interface'),
         DeclareLaunchArgument('use_fake_hardware', default_value='false', description='Use fake hardware'),
         DeclareLaunchArgument('fake_sensor_commands', default_value='false', description='Fake sensor commands'),
         DeclareLaunchArgument('launch_move_group',   default_value='true', description='Launch move_group (needed for fr3_husky_move_to_joint)'),
+        DeclareLaunchArgument('launch_avp_bridge', default_value='true', description='Launch AVP UDP-to-ROS bridge'),
+        DeclareLaunchArgument(
+            'avp_bridge_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'handtracking_avp.py']),
+            description='Path to AVP UDP-to-ROS bridge script',
+        ),
+        DeclareLaunchArgument('avp_udp_ip',        default_value='0.0.0.0', description='UDP bind IP for AVP bridge'),
+        DeclareLaunchArgument('avp_udp_port',      default_value='5005', description='UDP bind port for AVP bridge'),
+        DeclareLaunchArgument('avp_frame_id',      default_value='avp_world', description='Frame id used in tracker_pose header'),
+        DeclareLaunchArgument('launch_avp_image_bridge', default_value='true', description='Launch MuJoCo camera image UDP sender for AVP'),
+        # DeclareLaunchArgument(
+        #     'avp_image_bridge_script',
+        #     default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'publish_image_camera2avp_webrtc.py']),
+        #     description='Path to ROS-image to AVP WebRTC sender script',
+        # ),
+        # DeclareLaunchArgument(
+        #     'recognized_speech_webrtc_script',
+        #     default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'speech_webrtc.py']),
+        # ),
+        DeclareLaunchArgument('avp_image_max_fps', default_value='6.0', description='Maximum per-stream WebRTC image send rate'),
         OpaqueFunction(function=_launch_setup),
     ])

@@ -82,6 +82,16 @@ bool FR3HuskyModelUpdater::initialize(size_t num_robots,
         xdot_w_desired_[ee_name] = Eigen::Vector6d::Zero();
     }
 
+    // for debugging
+    command_mani_debug_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>( "/debug/command_mani", 10);
+    command_mobi_debug_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>("/debug/command_mobi", 10);
+    x_m_pub_ = node_->create_publisher<geometry_msgs::msg::PoseArray>("/debug/x_m", 10);
+    xdot_m_l_pub_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("/debug/xdot_m_l", 10);
+    xdot_m_r_pub_ = node_->create_publisher<geometry_msgs::msg::TwistStamped>("/debug/xdot_m_r", 10);
+    debug_publish_timer_ = node_->create_wall_timer(std::chrono::duration<double>(1.0 / 60.0), std::bind(&FR3HuskyModelUpdater::publishDebugState, this));
+
+
+
     return true;
 }
 
@@ -333,7 +343,71 @@ void FR3HuskyModelUpdater::updateRobotData()
             }
         }
     }
+
 }
+
+
+void FR3HuskyModelUpdater::publishDebugState()
+{
+    if (!node_) {
+        return;
+    }
+
+    const auto stamp = node_->now();
+
+    // publish x_m_
+    geometry_msgs::msg::PoseArray pose_msg;
+    pose_msg.header.stamp = node_->now();
+    pose_msg.header.frame_id = "base_link";
+    pose_msg.poses.resize(2);
+    for (size_t i = 0; i < ee_names_.size(); ++i)
+    {
+        const auto& ee_name = ee_names_[i];
+        pose_msg.poses[i].position.x = x_m_[ee_name].translation().x();
+        pose_msg.poses[i].position.y = x_m_[ee_name].translation().y();
+        pose_msg.poses[i].position.z = x_m_[ee_name].translation().z();
+
+        Eigen::Quaterniond q(x_m_[ee_name].rotation());
+        q.normalize();
+
+        pose_msg.poses[i].orientation.x = q.x();
+        pose_msg.poses[i].orientation.y = q.y();
+        pose_msg.poses[i].orientation.z = q.z();
+        pose_msg.poses[i].orientation.w = q.w();
+    }
+    x_m_pub_->publish(pose_msg);
+
+
+
+    // publish xdot
+    for (size_t i = 0; i < ee_names_.size(); ++i)
+    {
+        const auto& ee_name = ee_names_[i];
+        geometry_msgs::msg::TwistStamped msg;
+
+        msg.header.stamp = stamp;
+        msg.header.frame_id = "base_link";
+
+        msg.twist.linear.x  = xdot_m_[ee_name](0);
+        msg.twist.linear.y  = xdot_m_[ee_name](1);
+        msg.twist.linear.z  = xdot_m_[ee_name](2);
+
+        msg.twist.angular.x = xdot_m_[ee_name](3);
+        msg.twist.angular.y = xdot_m_[ee_name](4);
+        msg.twist.angular.z = xdot_m_[ee_name](5);
+
+        if (ee_name.find("left") != std::string::npos)
+        {
+            xdot_m_l_pub_->publish(msg);
+        }
+        else if (ee_name.find("right") != std::string::npos)
+        {
+            xdot_m_r_pub_->publish(msg);
+        }
+    }
+}
+
+
 
 void FR3HuskyModelUpdater::setInitFromCurrent()
 {
@@ -358,13 +432,34 @@ void FR3HuskyModelUpdater::setInitFromCurrent()
     x_w_init_ = x_w_;
     xdot_w_init_ = xdot_w_;
 }
-
 void FR3HuskyModelUpdater:: writeCommand(const Eigen::VectorXd& command_mani, const Eigen::Vector2d& command_mobi)
 {
     if (!is_configured_ || !getHandlesReady())
     {
         return;
     }
+
+    // for debugging
+    if (command_mani_debug_pub_)
+    {
+        std_msgs::msg::Float64MultiArray msg;
+        msg.data.resize(command_mani.size());
+        for (Eigen::Index i = 0; i < command_mani.size(); ++i)
+        {
+            msg.data[static_cast<size_t>(i)] = command_mani(i);
+        }
+        command_mani_debug_pub_->publish(msg);
+    }
+    if (command_mobi_debug_pub_)
+    {
+        std_msgs::msg::Float64MultiArray msg;
+        msg.data.resize(2);
+        msg.data[0] = command_mobi(0);
+        msg.data[1] = command_mobi(1);
+        command_mobi_debug_pub_->publish(msg);
+    }
+
+
 
     if (static_cast<size_t>(command_mani.size()) == manipulator_dof_)
     {
@@ -428,6 +523,7 @@ void FR3HuskyModelUpdater::forceStopMobile()
     for (auto& h : robot_handle_.left_wheels)  h.command.get().set_value(0.0);
     for (auto& h : robot_handle_.right_wheels) h.command.get().set_value(0.0);
 }
+
 
 void FR3HuskyModelUpdater::haltCommands()
 {
@@ -510,6 +606,7 @@ void FR3HuskyModelUpdater::haltCommands()
     for (auto & h : robot_handle_.left_wheels)  h.command.get().set_value(0.0);
     for (auto & h : robot_handle_.right_wheels) h.command.get().set_value(0.0);
 }
+
 
 bool FR3HuskyModelUpdater::GripperMove(const std::string robot_name, const double width, const double speed)
 {

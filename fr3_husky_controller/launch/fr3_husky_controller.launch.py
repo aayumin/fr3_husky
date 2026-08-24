@@ -2,9 +2,9 @@ import os
 import yaml
 import xacro
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown
+from launch.actions import ExecuteProcess, DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
@@ -53,8 +53,19 @@ def _launch_setup(context, *args, **kwargs):
     load_gripper      = LaunchConfiguration('load_gripper').perform(context)
     use_fake_hardware = LaunchConfiguration('use_fake_hardware').perform(context)
     fake_sensor_commands = LaunchConfiguration('fake_sensor_commands').perform(context)
+    launch_rviz      = LaunchConfiguration('launch_rviz').perform(context)
     namespace         = LaunchConfiguration('namespace').perform(context)
     controller_name   = LaunchConfiguration('controller_name').perform(context)
+    joy_dev           = LaunchConfiguration('joy_dev')
+    launch_avp_bridge = LaunchConfiguration('launch_avp_bridge')
+    avp_bridge_script = LaunchConfiguration('avp_bridge_script')
+    avp_udp_ip        = LaunchConfiguration('avp_udp_ip')
+    avp_udp_port      = LaunchConfiguration('avp_udp_port')
+    avp_frame_id      = LaunchConfiguration('avp_frame_id')
+    launch_mujoco_camera_viewer = LaunchConfiguration('launch_mujoco_camera_viewer')
+    mujoco_camera_viewer_script = LaunchConfiguration('mujoco_camera_viewer_script')
+    mujoco_camera_viewer_left_topic = LaunchConfiguration('mujoco_camera_viewer_left_topic')
+    mujoco_camera_viewer_right_topic = LaunchConfiguration('mujoco_camera_viewer_right_topic')
 
     if not robot_sides:
         raise RuntimeError("robot_side must be 'left', 'right', or 'dual'.")
@@ -113,6 +124,7 @@ def _launch_setup(context, *args, **kwargs):
         cm_params.extend([
             {'mujoco_scene_xacro_path': mjcf_path},
             {'mujoco_scene_xacro_args': xacro_args},
+            os.path.join(pkg_ctrl, 'config', 'fr3_husky_ros_controllers_mujoco.yaml'),
         ])
 
     # robot_state_publisher: direct subscription when using MuJoCo
@@ -138,6 +150,7 @@ def _launch_setup(context, *args, **kwargs):
             output='log',
             arguments=['-d', os.path.join(pkg_ctrl, 'rviz', 'fr3_husky.rviz')],
             parameters=[{'robot_description': robot_description}],
+            condition=IfCondition(launch_rviz),
         ),
         Node(
             package='robot_state_publisher',
@@ -152,7 +165,11 @@ def _launch_setup(context, *args, **kwargs):
             executable='ros2_control_node',
             namespace=namespace,
             parameters=cm_params,
-            remappings=[('joint_states', joint_states_topic)],
+            remappings=[
+                ('joint_states', joint_states_topic),
+                # Keep robot_localization on the conventional /odom topic.
+                (f'/{main_controller}/odom', '/odom'),
+            ],
             output='screen',
             on_exit=Shutdown(),
         ),
@@ -181,32 +198,82 @@ def _launch_setup(context, *args, **kwargs):
             arguments=[main_controller, '--controller-manager-timeout', '60'],
             output='screen',
         ),
-        # joy_node without namespace → publishes /joy (required by controller e-stop)
+        # joy_linux without namespace → publishes /joy (required by controller e-stop)
         Node(
-            package='joy',
-            executable='joy_node',
+            package='joy_linux',
+            executable='joy_linux_node',
             name='joy_node',
             output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+            parameters=[{'dev': joy_dev}],
         ),
-        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_node above
+        # teleop_twist_joy: remaps joy → /joy so it uses the same joy_linux node above
         Node(
             namespace='joy_teleop',
             package='teleop_twist_joy',
             executable='teleop_node',
             name='teleop_twist_joy_node',
             output='screen',
-            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_logitech.yaml'])],
+            parameters=[PathJoinSubstitution([FindPackageShare('husky_control'), 'config', 'teleop_ps4.yaml'])],
             remappings=[('joy', '/joy')],
         ),
-        # husky_control (robot_localization): real hardware only
+        # husky_control (robot_localization / EKF): runs on both real hw and mujoco
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution([FindPackageShare('husky_control'), 'launch', 'control.launch.py'])
             ),
-            condition=UnlessCondition(PythonExpression(["'", LaunchConfiguration('use_mujoco'), "' == 'true'"])),
+        ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                avp_bridge_script,
+                '--ros-args',
+                '-p', ['udp_ip:=', avp_udp_ip],
+                '-p', ['udp_port:=', avp_udp_port],
+                '-p', ['frame_id:=', avp_frame_id],
+            ],
+            name='mac2linux_avp_bridge',
+            output='screen',
+            condition=IfCondition(launch_avp_bridge),
+        ),
+        ExecuteProcess(
+            cmd=[
+                'python3',
+                mujoco_camera_viewer_script,
+                '--ros-args',
+                '-p', ['left_topic:=', mujoco_camera_viewer_left_topic],
+                '-p', ['right_topic:=', mujoco_camera_viewer_right_topic],
+            ],
+            name='mujoco_split_camera_viewer',
+            output='screen',
+            condition=IfCondition(PythonExpression([
+                "'", LaunchConfiguration('use_mujoco'), "' == 'true' and '",
+                launch_mujoco_camera_viewer, "' == 'true'",
+            ])),
         ),
     ]
+
+    # ZUPT: runs on both real hw and mujoco
+    # Real hw:  microstrain → imu/data → ZUPT → imu/data_zupt → EKF
+    # MuJoCo:   Singleton   → imu/data → ZUPT → imu/data_zupt → EKF
+    try:
+        imu_zupt_script = os.path.join(
+            get_package_share_directory('husky_control'),
+            'scripts', 'imu_zupt.py'
+        )
+        nodes.append(ExecuteProcess(cmd=['python3', imu_zupt_script], output='screen'))
+    except PackageNotFoundError:
+        pass
+
+    # microstrain IMU driver: real hardware only
+    if use_mujoco.lower() != 'true':
+        try:
+            microstrain_launch = os.path.join(
+                get_package_share_directory('microstrain_inertial_driver'),
+                'launch', 'microstrain_launch.py'
+            )
+            nodes.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(microstrain_launch)))
+        except PackageNotFoundError:
+            pass
 
     # franka_robot_state_broadcaster: real hardware only (skip for fake or mujoco)
     for broadcaster_name in franka_broadcaster_names:
@@ -253,9 +320,36 @@ def generate_launch_description():
         DeclareLaunchArgument('controller_name',   default_value='test_fr3_husky_controller', description='Base controller name (prefixed with left_/right_/dual_)'),
         DeclareLaunchArgument('robot_side',        default_value='left',  description="Robot side: left, right, or dual"),
         DeclareLaunchArgument('namespace',         default_value='',      description='Namespace for the robot'),
+        DeclareLaunchArgument('joy_dev',           default_value='/dev/input/js0', description='Joystick device for joy_linux'),
         DeclareLaunchArgument('load_gripper',      default_value='true',  description='Load gripper (true/false)'),
         DeclareLaunchArgument('use_mujoco',        default_value='false', description='Use MuJoCo hardware interface'),
         DeclareLaunchArgument('use_fake_hardware', default_value='false', description='Use fake hardware'),
         DeclareLaunchArgument('fake_sensor_commands', default_value='false', description='Fake sensor commands'),
+        DeclareLaunchArgument('launch_rviz',       default_value='false', description='Launch RViz'),
+        DeclareLaunchArgument('launch_avp_bridge', default_value='true', description='Launch AVP UDP-to-ROS bridge'),
+        DeclareLaunchArgument(
+            'avp_bridge_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'handtracking_avp.py']),
+            description='Path to AVP UDP-to-ROS bridge script',
+        ),
+        DeclareLaunchArgument('avp_udp_ip',        default_value='0.0.0.0', description='UDP bind IP for AVP bridge'),
+        DeclareLaunchArgument('avp_udp_port',      default_value='5005', description='UDP bind port for AVP bridge'),
+        DeclareLaunchArgument('avp_frame_id',      default_value='avp_world', description='Frame id used in tracker_pose header'),
+        DeclareLaunchArgument('launch_mujoco_camera_viewer', default_value='true', description='Launch split MuJoCo camera viewer when use_mujoco is true'),
+        DeclareLaunchArgument(
+            'mujoco_camera_viewer_script',
+            default_value=PathJoinSubstitution([FindPackageShare('fr3_husky_controller'), 'scripts', 'mujoco_split_camera_viewer.py']),
+            description='Path to split MuJoCo camera viewer script',
+        ),
+        DeclareLaunchArgument(
+            'mujoco_camera_viewer_left_topic',
+            default_value='/mujoco_ros_hardware/right_d435i/color/image_raw',
+            description='Left split-view image topic',
+        ),
+        DeclareLaunchArgument(
+            'mujoco_camera_viewer_right_topic',
+            default_value='/mujoco_ros_hardware/top_azure/color/image_raw',
+            description='Right split-view image topic',
+        ),
         OpaqueFunction(function=_launch_setup),
     ])

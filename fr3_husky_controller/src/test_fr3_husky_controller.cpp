@@ -315,13 +315,13 @@ CallbackReturn TestFr3HuskyController::on_configure(const rclcpp_lifecycle::Stat
     publish_rate_ = params_.publish_rate;
     mobi_state_pub_buf_.writeFromNonRT(std::make_pair(base_pose_w_, base_vel_b_));
 
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
     estop_button_pressed_.store(false, std::memory_order_release);
     estop_is_active_ = false;
     estop_button_index_warned_ = false;
-    joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
+    estop_joy_subscriber_ = get_node()->create_subscription<sensor_msgs::msg::Joy>(
         "/joy", rclcpp::SystemDefaultsQoS(),
-        std::bind(&TestFr3HuskyController::onJoyMessage, this, std::placeholders::_1));
+        std::bind(&TestFr3HuskyController::onEstopJoyMessage, this, std::placeholders::_1));
 
     odom_timer_ = get_node()->create_wall_timer(
         std::chrono::duration<double>(1.0 / publish_rate_),
@@ -469,22 +469,37 @@ controller_interface::CallbackReturn TestFr3HuskyController::on_deactivate(const
     odom_timer_.reset();
     estop_is_active_ = false;
     estop_button_pressed_.store(false, std::memory_order_release);
-    joy_msg_received_.store(false, std::memory_order_release);
+    estop_joy_msg_received_.store(false, std::memory_order_release);
 
     return CallbackReturn::SUCCESS;
 }
 
 controller_interface::return_type TestFr3HuskyController::update(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 {
-    if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
-    {
-        if (!is_halted_)
+    #if ROS_DISTRO == 22
+        if (get_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
         {
-            haltCommands();
-            is_halted_ = true;
+            if (!is_halted_)
+            {
+                haltCommands();
+                is_halted_ = true;
+            }
+            return controller_interface::return_type::OK;
         }
-        return controller_interface::return_type::OK;
-    }
+    #else
+        if (get_lifecycle_state().id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE)
+        {
+            if (!is_halted_)
+            {
+                haltCommands();
+                is_halted_ = true;
+            }
+            return controller_interface::return_type::OK;
+        }
+    #endif
+
+    struct timespec update_start_ts;
+    clock_gettime(CLOCK_MONOTONIC, &update_start_ts);
 
     updateJointStates();
     updateRobotData();
@@ -529,7 +544,7 @@ controller_interface::return_type TestFr3HuskyController::update(const rclcpp::T
     // -------------------------------------------------------------------------
 
     const bool estop_pressed = params_.use_estop &&
-                               joy_msg_received_.load(std::memory_order_acquire) &&
+                               estop_joy_msg_received_.load(std::memory_order_acquire) &&
                                estop_button_pressed_.load(std::memory_order_acquire);
     if (estop_pressed && !estop_is_active_)
     {
@@ -545,6 +560,34 @@ controller_interface::return_type TestFr3HuskyController::update(const rclcpp::T
     {
         for (const auto& h : registered_left_wheel_handles_)  h.command.get().set_value(0.0);
         for (const auto& h : registered_right_wheel_handles_) h.command.get().set_value(0.0);
+    }
+
+    struct timespec update_end_ts;
+    clock_gettime(CLOCK_MONOTONIC, &update_end_ts);
+    const double elapsed_ms = static_cast<double>(update_end_ts.tv_sec  - update_start_ts.tv_sec)  * 1e3
+                            + static_cast<double>(update_end_ts.tv_nsec - update_start_ts.tv_nsec) * 1e-6;
+
+    if (elapsed_ms > kUpdatePeriodMs)
+    {
+        ++update_overrun_count_;
+        update_overrun_sum_ms_ += elapsed_ms;
+        if (elapsed_ms > update_overrun_max_ms_) update_overrun_max_ms_ = elapsed_ms;
+    }
+    if (++update_cycle_count_ >= kUpdateWindowSize)
+    {
+        if (update_overrun_count_ >= kUpdateOverrunWarnThreshold)
+        {
+            const double avg_ms = update_overrun_sum_ms_ / update_overrun_count_;
+            LOGE(get_node(),
+                "[Controller] update() overran %.0f ms budget %d/%d times in the last %d cycles "
+                "(avg: %.3f ms, max: %.3f ms). Consider reducing computation load.",
+                kUpdatePeriodMs, update_overrun_count_, kUpdateWindowSize, kUpdateWindowSize,
+                avg_ms, update_overrun_max_ms_);
+        }
+        update_cycle_count_    = 0;
+        update_overrun_count_  = 0;
+        update_overrun_sum_ms_ = 0.0;
+        update_overrun_max_ms_ = 0.0;
     }
 
     return controller_interface::return_type::OK;
@@ -690,8 +733,8 @@ void TestFr3HuskyController::updateJointStates()
         left_pos /= n;  right_pos /= n;
         left_vel /= n;  right_vel /= n;
     }
-    wheel_pos_ = Eigen::Vector2d(left_pos, right_pos);
-    wheel_vel_ = Eigen::Vector2d(left_vel, right_vel);
+    wheel_pos_ = Eigen::Vector2d(left_pos * params_.wheel_encoder_multiplier, right_pos * params_.wheel_encoder_multiplier);
+    wheel_vel_ = Eigen::Vector2d(left_vel * params_.wheel_encoder_multiplier, right_vel * params_.wheel_encoder_multiplier);
 }
 
 void TestFr3HuskyController::updateRobotData()
@@ -958,9 +1001,9 @@ void TestFr3HuskyController::publishFromMobileStateBuffer()
     }
 }
 
-void TestFr3HuskyController::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
+void TestFr3HuskyController::onEstopJoyMessage(const sensor_msgs::msg::Joy::SharedPtr msg)
 {
-    joy_msg_received_.store(true, std::memory_order_release);
+    estop_joy_msg_received_.store(true, std::memory_order_release);
     if (!msg)
     {
         estop_button_pressed_.store(false, std::memory_order_release);
@@ -981,7 +1024,7 @@ void TestFr3HuskyController::onJoyMessage(const sensor_msgs::msg::Joy::SharedPtr
     estop_button_pressed_.store(msg->buttons[static_cast<size_t>(idx)] != 0, std::memory_order_release);
 }
 
-bool TestFr3HuskyController::isJoyConnected() const
+bool TestFr3HuskyController::isEstopJoyConnected() const
 {
     return joy_subscriber_ && joy_subscriber_->get_publisher_count() > 0;
 }

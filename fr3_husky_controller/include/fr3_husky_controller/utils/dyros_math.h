@@ -4,11 +4,13 @@
 #define ZCE (1e-5)
 // constexpr size_t MAX_DOF=50;
 
+#include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <limits>
 #include <vector>
 #include <Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
-#include <fstream>
-#include <iostream>
 
 #define GRAVITY 9.80665
 #define MAX_DOF 50U
@@ -314,12 +316,54 @@ Eigen::Matrix3d rotateWithX(double roll_angle);
 Eigen::Vector3d rot2Euler(Eigen::Matrix3d Rot);
 
 template <typename _Matrix_Type_>
-_Matrix_Type_ pinv(const _Matrix_Type_ &a, double epsilon =std::numeric_limits<double>::epsilon())
-{
-    Eigen::JacobiSVD< _Matrix_Type_ > svd(a ,Eigen::ComputeThinU | Eigen::ComputeThinV);
-    double tolerance = epsilon * std::max(a.cols(), a.rows()) *svd.singularValues().array().abs()(0);
+using PseudoInverseMatrix = Eigen::Matrix<typename _Matrix_Type_::Scalar,
+                                          _Matrix_Type_::ColsAtCompileTime,
+                                          _Matrix_Type_::RowsAtCompileTime,
+                                          0,
+                                          _Matrix_Type_::MaxColsAtCompileTime,
+                                          _Matrix_Type_::MaxRowsAtCompileTime>;
 
-    return svd.matrixV() *  (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
+template <typename _Matrix_Type_>
+PseudoInverseMatrix<_Matrix_Type_> PinvSVD(
+    const _Matrix_Type_ &a,
+    typename Eigen::NumTraits<typename _Matrix_Type_::Scalar>::Real epsilon =
+        std::numeric_limits<typename Eigen::NumTraits<typename _Matrix_Type_::Scalar>::Real>::epsilon())
+{
+    using Scalar = typename _Matrix_Type_::Scalar;
+    using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
+    using DynamicMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
+    using ReturnType = PseudoInverseMatrix<_Matrix_Type_>;
+
+    const DynamicMatrix dynamic_a = a;
+    Eigen::JacobiSVD<DynamicMatrix> svd(dynamic_a, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    ReturnType pseudo_inverse = ReturnType::Zero(a.cols(), a.rows());
+
+    if (svd.singularValues().size() == 0)
+    {
+        return pseudo_inverse;
+    }
+
+    const RealScalar tolerance =
+        epsilon * static_cast<RealScalar>(std::max(a.cols(), a.rows())) *
+        svd.singularValues().array().abs().maxCoeff();
+
+    pseudo_inverse = svd.matrixV() *
+                     (svd.singularValues().array().abs() > tolerance)
+                         .select(svd.singularValues().array().inverse(), RealScalar(0))
+                         .matrix()
+                         .asDiagonal() *
+                     svd.matrixU().adjoint();
+
+    return pseudo_inverse;
+}
+
+template <typename _Matrix_Type_>
+PseudoInverseMatrix<_Matrix_Type_> pinv(
+    const _Matrix_Type_ &a,
+    typename Eigen::NumTraits<typename _Matrix_Type_::Scalar>::Real epsilon =
+        std::numeric_limits<typename Eigen::NumTraits<typename _Matrix_Type_::Scalar>::Real>::epsilon())
+{
+    return PinvSVD(a, epsilon);
 }
 
 Eigen::MatrixXd discreteRiccatiEquation(Eigen::MatrixXd a, Eigen::MatrixXd b, Eigen::MatrixXd r, Eigen::MatrixXd q);

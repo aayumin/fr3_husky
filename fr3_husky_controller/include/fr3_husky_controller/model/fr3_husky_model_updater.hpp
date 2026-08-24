@@ -7,6 +7,10 @@
 #include <string>
 #include <vector>
 
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+
 #include <Eigen/Eigen>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
@@ -34,6 +38,7 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
                         const std::vector<std::string>& ee_names) override;
         void setDRCRobotData(const std::shared_ptr<drc::MobileManipulator::RobotData>&& robot_data);
         void setDRCRobotController(const std::shared_ptr<drc::MobileManipulator::RobotController>&& robot_controller) { robot_controller_ = std::move(robot_controller); }
+        void setSubtractGravityFromEffortCommand(bool enabled) { subtract_gravity_from_effort_command_ = enabled; }
         void updateJointStates() override;
         void updateRobotData() override;
         void haltCommands() override;
@@ -47,8 +52,10 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         bool GripperClose(const std::string robot_name, double speed = 0.1) { return GripperMove(robot_name, 0.00, speed); }
         bool GripperHoming(const std::string robot_name);
         bool GripperGrasp(const std::string robot_name, double width = 0.0, double speed = 0.1, double force = 30.0, std::pair<double, double> epsilon = {0.08, 0.08});
+        Eigen::VectorXd getJointTorque(const std::string robot_name) {return torque_[robot_name];}
     
     public:
+        bool subtract_gravity_from_effort_command_{true};
         std::shared_ptr<drc::MobileManipulator::RobotData> robot_data_;
         std::shared_ptr<drc::MobileManipulator::RobotController> robot_controller_;
 
@@ -134,6 +141,19 @@ class FR3HuskyModelUpdater final : public ModelUpdaterBase
         Eigen::Vector2d wheel_vel_;
 
         Eigen::Vector2d wheel_vel_desired_;
+
+        
+
+        // ========================================================================
+        // ===============================  Debugging =============================
+        // ========================================================================
+        rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_mani_debug_pub_;
+        rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_mobi_debug_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr x_m_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr xdot_m_l_pub_, xdot_m_r_pub_;
+        rclcpp::TimerBase::SharedPtr debug_publish_timer_;
+        void publishDebugState();
+
 };
 
 }  // namespace fr3_husky_controller

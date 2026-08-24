@@ -8,11 +8,19 @@ endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-fno-tree-slp-vectorize)
 endif()
 
-find_package(ros2_control_cmake REQUIRED)
-set_compiler_options()
-export_windows_symbols()
+if($ENV{ROS_DISTRO} MATCHES "humble")
+    add_definitions(-DROS_DISTRO=22)
+else()
+    add_definitions(-DROS_DISTRO=24)
+endif()
+
+# find_package(ros2_control_cmake REQUIRED)
+# set_compiler_options()
+# export_windows_symbols()
+
 
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
@@ -30,6 +38,8 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
     geometry_msgs
     sensor_msgs
     urdf
+    urdfdom
+    urdfdom_headers
     dyros_robot_controller
     fr3_husky_msgs
     franka_msgs
@@ -41,14 +51,45 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
     controller_manager_msgs
     action_msgs
     moveit_ros_planning_interface
+    mujoco_ros_hardware
     srdfdom
 )
 
 
 find_package(ament_cmake REQUIRED)
+find_package(OpenGL REQUIRED)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
     find_package(${Dependency} REQUIRED)
 endforeach()
+
+set(MUJOCO_DIR "/opt/mujoco" CACHE PATH "MuJoCo SDK installation path")
+set(MUJOCO_SEARCH_PREFIXES
+    "${MUJOCO_DIR}"
+    "$ENV{MUJOCO_DIR}"
+    "$ENV{MUJOCO_HOME}"
+    "/usr/local"
+    "/usr"
+)
+find_path(MUJOCO_INCLUDE_DIR
+    NAMES mujoco/mujoco.h
+    PATHS ${MUJOCO_SEARCH_PREFIXES}
+    PATH_SUFFIXES include
+    REQUIRED
+)
+find_library(MUJOCO_LIBRARY
+    NAMES mujoco
+    PATHS ${MUJOCO_SEARCH_PREFIXES}
+    PATH_SUFFIXES lib lib64
+    REQUIRED
+)
+
+if(NOT TARGET mujoco::mujoco)
+    add_library(mujoco::mujoco UNKNOWN IMPORTED)
+    set_target_properties(mujoco::mujoco PROPERTIES
+        IMPORTED_LOCATION "${MUJOCO_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_INCLUDE_DIR}"
+    )
+endif()
 
 
 
@@ -87,16 +128,29 @@ add_library(${PROJECT_NAME} SHARED
     src/servers/fr3/omega_haptic_action_server.cpp
     src/servers/fr3_husky/omega_haptic_action_server.cpp
     
-    src/test_fr3_controller.cpp
-    src/test_fr3_husky_controller.cpp
     src/servers/fr3/joint_trajectory_controller_action_server.cpp
     src/servers/fr3/move_to_joint_action_server.cpp
+    src/servers/fr3/contact_guarded_motion_action_server.cpp
+    src/servers/fr3/contact_guarded_delta_motion_action_server.cpp
     src/servers/fr3_husky/joint_trajectory_controller_action_server.cpp
     src/servers/fr3_husky/move_to_joint_action_server.cpp
-    src/servers/fr3/vive_tracker_action_server.cpp
-    src/servers/fr3_husky/vive_tracker_action_server.cpp
+    src/servers/fr3_husky/task_space_move_action_server.cpp
+    src/servers/fr3_husky/task_space_delta_move_action_server.cpp
+    src/servers/fr3_husky/screw_motion_action_server.cpp
+    src/servers/fr3_husky/contact_guarded_motion_action_server.cpp
+    src/servers/fr3_husky/contact_guarded_delta_motion_action_server.cpp
+    src/servers/fr3_husky/gripper_command_action_server.cpp
     src/servers/fr3_husky/husky_move_action_server.cpp
+    src/servers/fr3_husky/husky_pedal_action_server.cpp
     src/servers/fr3_husky/apple_vision_pro_action_server.cpp
+    src/servers/fr3_husky/keyboard_move_action_server.cpp
+
+    src/servers/fr3/task_space_move_action_server.cpp
+    src/servers/fr3/task_space_delta_move_action_server.cpp
+    src/servers/fr3/screw_motion_action_server.cpp
+    src/servers/fr3/gripper_command_action_server.cpp
+    src/servers/fr3/apple_vision_pro_action_server.cpp
+    src/servers/fr3/keyboard_move_action_server.cpp
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -113,6 +167,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_link_libraries(${PROJECT_NAME} PUBLIC
                       fr3_controller_parameters
                       fr3_husky_controller_parameters
+                      mujoco::mujoco
                       pluginlib::pluginlib
                       rclcpp::rclcpp
                       rclcpp_action::rclcpp_action
@@ -148,6 +203,7 @@ ament_target_dependencies(${PROJECT_NAME} PUBLIC
     controller_manager_msgs
     action_msgs
     moveit_ros_planning_interface
+    mujoco_ros_hardware
     srdfdom
 )
 
@@ -168,7 +224,7 @@ install(TARGETS ${PROJECT_NAME}
         LIBRARY DESTINATION lib
 )
     
-install(DIRECTORY config launch rviz
+install(DIRECTORY config launch rviz scripts
   DESTINATION share/${PROJECT_NAME}
 )
 
