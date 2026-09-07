@@ -1,13 +1,11 @@
 import rclpy
 from rclpy.node import Node
 from datetime import datetime
-from sensor_msgs.msg import JointState, CompressedImage # 💡 CompressedImage 추가
+from sensor_msgs.msg import JointState, CompressedImage
 from geometry_msgs.msg import PoseStamped
 import pickle
 import time
-import numpy as np
-import cv2
-
+import sys
 
 class RealTimeDataSaver(Node):
     def __init__(self):
@@ -22,7 +20,6 @@ class RealTimeDataSaver(Node):
         self.save_rate = 30.0
         self.save_period = 1.0 / self.save_rate
 
-        # 💡 토픽 경로와 타입이 변경됨에 따라 관리용 키 이름 변경
         self.image_topic_name = '/camera/camera/color/image_raw/compressed'
 
         self.last_save_time = {
@@ -33,9 +30,6 @@ class RealTimeDataSaver(Node):
             '/debug/target_smooth_pose_left': 0.0,
             '/debug/target_smooth_pose_right': 0.0,
         }
-
-        # HDF5 변환 규격과 일치 (84x84)
-        self.target_image_size = 84
 
         # 2. 필터링할 관절 이름 목록 정의
         self.target_joints = [
@@ -50,7 +44,7 @@ class RealTimeDataSaver(Node):
         # 3. 구독 개시 현재 시간 기록 (과거 메시지 무시용)
         self.start_time = self.get_clock().now()
 
-        # 4. 토픽 구독 설정 (💡 Depth 대신 CompressedImage 타입 적용)
+        # 4. 토픽 구독 설정 (CompressedImage 타입 적용)
         self.sub_img_top = self.create_subscription(
             CompressedImage, self.image_topic_name, self.image_top_callback, 10)
         self.sub_joints = self.create_subscription(
@@ -74,7 +68,7 @@ class RealTimeDataSaver(Node):
             )
             self.pose_subs.append(sub)
 
-        self.get_logger().info(f"실시간 데이터 수집 시작 (컬러 압축 이미지 모드) -> {self.filename}")
+        self.get_logger().info(f"실시간 데이터 수집 시작 (압축 이미지 원본 바이트 저장 모드) -> {self.filename}")
 
     def should_save(self, topic_name):
         now = time.monotonic()
@@ -86,53 +80,28 @@ class RealTimeDataSaver(Node):
     def save_to_pickle(self, data):
         pickle.dump(data, self.file_handle)
 
-    def process_compressed_image_msg(self, msg, target_size=84):
-        """💡 JPEG/PNG로 압축된 바이너리 데이터를 RGB 넘파이 배열로 복원 및 크롭 가공"""
-        # 1. 압축 바이너리 배열을 OpenCV 이미지로 디코딩 (기본 BGR 컬러 포맷으로 해제됨)
-        np_arr = np.frombuffer(msg.data, np.uint8)
-        img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-        if img_bgr is None:
-            raise ValueError("Compressed image decoding failed.")
-
-        # 2. 중앙 크롭 처리
-        h, w = img_bgr.shape[:2]
-        crop_size = min(h, w)
-        y0 = (h - crop_size) // 2
-        x0 = (w - crop_size) // 2
-        img = img_bgr[y0:y0 + crop_size, x0:x0 + crop_size]
-
-        # 3. 84x84 리사이즈
-        interpolation = cv2.INTER_AREA if crop_size > target_size else cv2.INTER_LINEAR
-        img = cv2.resize(img, (target_size, target_size), interpolation=interpolation)
-
-        # 4. 학습 네트워크 관례에 맞춰 BGR에서 RGB로 색상 채널 전환
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        return img_rgb
-
     def image_top_callback(self, msg):
+        """💡 터미널 도배 print 문 제거 및 정상적인 수집 프로세스 유지"""
         if not self.should_save(self.image_topic_name): return
         
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
             try:
-                # 변경된 컬러 압축 이미지 가공 함수 호출
-                img = self.process_compressed_image_msg(msg, target_size=self.target_image_size)
-
-                print(f"get image msg: {msg.header.stamp.sec}.{msg.header.stamp.nanosec}, shape: {img.shape}, dtype: {img.dtype}")
+                raw_compressed_bytes = bytes(msg.data)
                 
-                # robomimic 변환 스크립트 규격 구조 유지
+                # 💡 print문 제거 (터미널 출력 방지)
                 data = {
                     'topic': self.image_topic_name,
                     'sec': msg.header.stamp.sec,
                     'nanosec': msg.header.stamp.nanosec,
-                    'data': img.tobytes(),
-                    'height': self.target_image_size,
-                    'width': self.target_image_size,
-                    'encoding': 'rgb8',  # 💡 컬러 데이터 포맷 명시
-                    'step': self.target_image_size * 3  # 채널이 3개이므로 너비 * 3
+                    'data': raw_compressed_bytes,
+                    'format': msg.format,
+                    'is_compressed_raw': True
                 }
                 self.save_to_pickle(data)
+            except KeyboardInterrupt:
+                # Ctrl+C 인터럽트는 상위로 바로 던져서 즉시 죽도록 처리
+                raise
             except Exception as e:
                 self.get_logger().error(f"Top Compressed Color Image 저장 오류: {e}")
 
@@ -142,49 +111,58 @@ class RealTimeDataSaver(Node):
 
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
-            joint_map = {name: (pos, vel) for name, pos, vel in zip(msg.name, msg.position, msg.velocity)}
-            filtered_positions = []
-            filtered_velocities = []
-            
-            for joint_name in self.target_joints:
-                if joint_name in joint_map:
-                    pos, vel = joint_map[joint_name]
-                    filtered_positions.append(pos)
-                    filtered_velocities.append(vel)
-            
-            data = {
-                'topic': topic_name,
-                'sec': msg.header.stamp.sec,
-                'nanosec': msg.header.stamp.nanosec,
-                'joint_names': self.target_joints,
-                'position': filtered_positions,
-                'velocity': filtered_velocities
-            }
-            self.save_to_pickle(data)
+            try:
+                joint_map = {name: (pos, vel) for name, pos, vel in zip(msg.name, msg.position, msg.velocity)}
+                filtered_positions = []
+                filtered_velocities = []
+                
+                for joint_name in self.target_joints:
+                    if joint_name in joint_map:
+                        pos, vel = joint_map[joint_name]
+                        filtered_positions.append(pos)
+                        filtered_velocities.append(vel)
+                
+                data = {
+                    'topic': topic_name,
+                    'sec': msg.header.stamp.sec,
+                    'nanosec': msg.header.stamp.nanosec,
+                    'joint_names': self.target_joints,
+                    'position': filtered_positions,
+                    'velocity': filtered_velocities
+                }
+                self.save_to_pickle(data)
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                pass
 
     def pose_stamped_callback(self, msg, topic_name):
         if not self.should_save(topic_name): return
 
         msg_time = rclpy.time.Time.from_msg(msg.header.stamp)
         if msg_time > self.start_time:
-            data = {
-                'topic': topic_name,
-                'sec': msg.header.stamp.sec,
-                'nanosec': msg.header.stamp.nanosec,
-                'position': {
-                    'x': msg.pose.position.x,
-                    'y': msg.pose.position.y,
-                    'z': msg.pose.position.z
-                },
-                'orientation': {
-                    'x': msg.pose.orientation.x,
-                    'y': msg.pose.orientation.y,
-                    'z': msg.pose.orientation.z,
-                    'w': msg.pose.orientation.w
+            try:
+                data = {
+                    'topic': topic_name,
+                    'sec': msg.header.stamp.sec,
+                    'nanosec': msg.header.stamp.nanosec,
+                    'position': {
+                        'x': msg.pose.position.x,
+                        'y': msg.pose.position.y,
+                        'z': msg.pose.position.z
+                    },
+                    'orientation': {
+                        'x': msg.pose.orientation.x,
+                        'y': msg.pose.orientation.y,
+                        'z': msg.pose.orientation.z,
+                        'w': msg.pose.orientation.w
+                    }
                 }
-            }
-            self.save_to_pickle(data)
-
+                self.save_to_pickle(data)
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                pass
 
     def destroy_node(self):
         if hasattr(self, 'file_handle') and not self.file_handle.closed:
@@ -197,10 +175,14 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        # 터미널에 에러 로그 패스하고 안전 종료
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except:
+            pass
 
 if __name__ == '__main__':
     main()
