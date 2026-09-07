@@ -82,7 +82,7 @@ def main():
         # TaskSpaceMoveClient 내 DEFAULT_RIGHT_POSE 기준 값 반영
         obj_x = 0.41
         obj_y = -0.25
-        obj_z = 0.49
+        obj_z = 0.42
         obj_yaw = 0.0
         
         if obj_reply == 'y':
@@ -116,7 +116,7 @@ def main():
         # TaskSpaceMoveClient 내 DEFAULT_RIGHT_POSE 기준 값 반영
         obj_x = 0.45
         obj_y = -0.1
-        obj_z = 0.49
+        obj_z = 0.42
         obj_yaw = 0.5
         
         if obj_reply == 'y':
@@ -172,7 +172,7 @@ def main():
         # ----------------------------------------------------
         obj_x = 0.41
         obj_y = -0.25
-        obj_z = 0.49
+        obj_z = 0.42
         obj_yaw = 0.0
 
         print("\n----------------------------------------------------")
@@ -214,7 +214,8 @@ def main():
         print("\n----------------------------------------------------")
         input(">> 5) 준비 완료. 원격제어 및 데이터 수집을 시작하려면 [Enter]를 누르세요.")
         
-        teleop_proc = run_command("ros2 run fr3_husky_task_manager keyboard_move", bg=True)
+        # teleop_proc = run_command("ros2 run fr3_husky_task_manager keyboard_move", bg=True)
+        teleop_proc = run_command("ros2 run fr3_husky_task_manager apple_vision_pro --yaw-only --left-off", bg=True)
         processes.append(teleop_proc)
         
         data_collect_proc = run_command("ros2 run fr3_husky_task_manager check2", bg=True)
