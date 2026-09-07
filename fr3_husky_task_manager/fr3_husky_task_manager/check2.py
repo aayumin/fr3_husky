@@ -31,6 +31,8 @@ class RealTimeDataSaver(Node):
             '/debug/target_smooth_pose_right': 0.0,
         }
 
+        self.target_image_size = 84
+
         # 2. 필터링할 관절 이름 목록 정의
         self.target_joints = [
             'left_fr3_joint1', 'left_fr3_joint2', 'left_fr3_joint3', 'left_fr3_joint4', 
@@ -40,11 +42,9 @@ class RealTimeDataSaver(Node):
             'right_fr3_joint5', 'right_fr3_joint6', 'right_fr3_joint7', 
             'right_fr3_finger_joint1', 'right_fr3_finger_joint2'
         ]
-        
-        # 3. 구독 개시 현재 시간 기록 (과거 메시지 무시용)
+    
         self.start_time = self.get_clock().now()
 
-        # 4. 토픽 구독 설정 (CompressedImage 타입 적용)
         self.sub_img_top = self.create_subscription(
             CompressedImage, self.image_topic_name, self.image_top_callback, 10)
         self.sub_joints = self.create_subscription(
